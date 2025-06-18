@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Medical - Monitor Pacienți</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #2c5282 0%, #2d3748 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .config-section {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .config-section h3 {
+            color: #856404;
+            margin-bottom: 15px;
+        }
+
+        .config-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .auth-section {
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            max-width: 400px;
+            margin: 0 auto 30px;
+        }
+
+        .login-form h2 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #2c5282;
+            font-size: 1.8em;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+            font-size: 1.1em;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #2c5282;
+            box-shadow: 0 0 0 3px rgba(44, 82, 130, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #2c5282 0%, #2d3748 100%);
+            color: white;
+            border: none;
+            padding: 15px 35px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(44, 82, 130, 0.3);
+        }
+
+        .btn-small {
+            width: auto;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .dashboard {
+            display: none;
+        }
+
+        .dashboard.active {
+            display: block;
+        }
+
+        .doctor-info {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .doctor-details h3 {
+            color: #2c5282;
+            font-size: 1.5em;
+            margin-bottom: 5px;
+        }
+
+        .logout-btn {
+            background: #e53e3e;
+            padding: 10px 20px;
+            font-size: 14px;
+            width: auto;
+        }
+
+        .patients-list {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+
+        .patients-list h3 {
+            color: #2c5282;
+            margin-bottom: 25px;
+            font-size: 1.5em;
+            text-align: center;
+        }
+
+        .patient-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9fa;
+        }
+
+        .patient-item:hover {
+            border-color: #2c5282;
+            background: #f0f4f8;
+            transform: translateY(-2px);
+        }
+
+        .patient-item.selected {
+            border-color: #2c5282;
+            background: #e6f3ff;
+        }
+
+        .patient-info {
+            flex-grow: 1;
+        }
+
+        .patient-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+
+        .patient-details {
+            color: #666;
+            font-size: 0.95em;
+        }
+
+        .patient-status {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .alert-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+
+        .alert-normal {
+            background: #48bb78;
+            box-shadow: 0 0 0 3px rgba(72, 187, 120, 0.2);
+        }
+
+        .alert-warning {
+            background: #ed8936;
+            box-shadow: 0 0 0 3px rgba(237, 137, 54, 0.2);
+            animation: pulse-warning 2s infinite;
+        }
+
+        .alert-critical {
+            background: #e53e3e;
+            box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.3);
+            animation: pulse-critical 1s infinite;
+        }
+
+        .alert-offline {
+            background: #a0aec0;
+            box-shadow: 0 0 0 3px rgba(160, 174, 192, 0.2);
+        }
+
+        @keyframes pulse-warning {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 3px rgba(237, 137, 54, 0.2);
+            }
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 0 6px rgba(237, 137, 54, 0.4);
+            }
+        }
+
+        @keyframes pulse-critical {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.3);
+            }
+            50% {
+                transform: scale(1.15);
+                box-shadow: 0 0 0 8px rgba(229, 62, 62, 0.6);
+            }
+        }
+
+        .patient-values {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        .patient-values.active {
+            display: block;
+        }
+
+        .patient-values h4 {
+            color: #2c5282;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+            text-align: center;
+        }
+
+        .values-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .value-item {
+            text-align: center;
+            padding: 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+
+        .value-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .value-number {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #2d3748;
+        }
+
+        .value-status {
+            font-size: 0.8em;
+            margin-top: 5px;
+            padding: 3px 8px;
+            border-radius: 12px;
+        }
+
+        .status-normal { background: #c6f6d5; color: #22543d; }
+        .status-warning { background: #feebc8; color: #c05621; }
+        .status-critical { background: #fed7d7; color: #c53030; }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #fc8181;
+        }
+
+        .success {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #9ae6b4;
+        }
+
+        .info {
+            background: #bee3f8;
+            color: #2c5282;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #63b3ed;
+        }
+
+        .last-update {
+            text-align: center;
+            color: white;
+            margin-top: 20px;
+            font-size: 1.1em;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .status-connected {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-disconnected {
+            background: #fed7d7;
+            color: #c53030;
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status" id="connection-status">🔌 Verificare conexiune...</div>
+
+    <div class="container">
+        <div class="header">
+            <h1>⚕️ Portal Medical</h1>
+            <p>Monitor pacienți în timp real</p>
+        </div>
+
+        <!-- Configurare API -->
+        <div id="config-section" class="config-section">
+            <h3>⚙️ Conexiune la API-ul colegului</h3>
+            <p style="margin-bottom: 15px; color: #856404;">
+                <strong>✅ API-ul colegului:</strong> <code>http://74.234.34.29:3000</code><br>
+                Endpoint-uri disponibile: <code>/login</code>, <code>/profile</code>, <code>/register</code>
+            </p>
+            <input type="text" id="api-url" class="config-input" 
+                   placeholder="Schimbă doar dacă colegul îți dă alt URL"
+                   value="http://74.234.34.29:3000">
+            <button class="btn btn-small" onclick="saveApiConfig()">Testează conexiunea</button>
+        </div>
+
+        <!-- Mesaje -->
+        <div id="messages"></div>
+
+        <!-- Secțiunea de autentificare pentru medici -->
+        <div id="auth-section" class="auth-section">
+            <div class="login-form">
+                <h2>🩺 Autentificare Medic</h2>
+                <form onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label for="login-email">Email/Username:</label>
+                        <input type="text" id="login-email" placeholder="username sau email" 
+                               value="testuser" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Parolă:</label>
+                        <input type="password" id="login-password" placeholder="Parola ta" 
+                               value="Test1234!" required>
+                    </div>
+                    <button type="submit" class="btn">Acces Portal Medical</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Dashboard-ul pentru medici -->
+        <div id="dashboard" class="dashboard">
+            <!-- Informații medic -->
+            <div class="doctor-info">
+                <div class="doctor-details">
+                    <h3>Dr. <span id="doctor-name">Nume Doctor</span></h3>
+                    <p><strong>Email:</strong> <span id="doctor-email">doctor@spital.ro</span></p>
+                </div>
+                <button class="btn logout-btn" onclick="logout()">Deconectare</button>
+            </div>
+
+            <!-- Lista pacienților -->
+            <div class="patients-list">
+                <h3>📋 Lista Pacienți</h3>
+                <div id="patients-container">
+                    <div class="info">
+                        📡 Se încearcă conectarea la API pentru încărcarea pacienților...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detalii pacient selectat -->
+            <div id="patient-values" class="patient-values">
+                <h4>Măsurători pentru: <span id="selected-patient-name">-</span></h4>
+                <div class="values-grid">
+                    <div class="value-item">
+                        <div class="value-label">Temperatură</div>
+                        <div class="value-number" id="temp-value">--°C</div>
+                        <div class="value-status status-normal" id="temp-status">-</div>
+                    </div>
+                    <div class="value-item">
+                        <div class="value-label">Puls</div>
+                        <div class="value-number" id="pulse-value">-- BPM</div>
+                        <div class="value-status status-normal" id="pulse-status">-</div>
+                    </div>
+                    <div class="value-item">
+                        <div class="value-label">Umiditate</div>
+                        <div class="value-number" id="humidity-value">--%</div>
+                        <div class="value-status status-normal" id="humidity-status">-</div>
+                    </div>
+                    <div class="value-item">
+                        <div class="value-label">ECG</div>
+                        <div class="value-number" id="ecg-value">--</div>
+                        <div class="value-status status-normal" id="ecg-status">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="last-update">
+                Ultima actualizare: <span id="last-update">-</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configurare API - se va seta dinamic
+        let API_BASE_URL = localStorage.getItem('api_base_url') || 'http://74.234.34.29:3000';
+        let authToken = localStorage.getItem('authToken');
+        let currentDoctor = JSON.parse(localStorage.getItem('currentDoctor') || '{}');
+        let selectedPatientId = null;
+        let updateInterval = null;
+        let isApiConnected = false;
+
+        // Inițializare la încărcarea paginii
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('api-url').value = API_BASE_URL;
+            testApiConnection();
+            
+            if (authToken) {
+                showDashboard();
+            }
+        });
+
+        // Salvare configurare API
+        function saveApiConfig() {
+            const apiUrl = document.getElementById('api-url').value.trim();
+            if (!apiUrl) {
+                showMessage('Te rog introdu URL-ul API-ului!', 'error');
+                return;
+            }
+            
+            // Elimină slash-ul final dacă există
+            API_BASE_URL = apiUrl.replace(/\/$/, '');
+            localStorage.setItem('api_base_url', API_BASE_URL);
+            
+            showMessage('Configurare salvată! Se testează conexiunea...', 'info');
+            testApiConnection();
+        }
+
+        // Test conexiune API (adaptat pentru endpoint-urile colegului)
+        async function testApiConnection() {
+            const statusElement = document.getElementById('connection-status');
+            statusElement.textContent = '🔄 Testare conexiune...';
+            statusElement.className = 'connection-status';
+            
+            try {
+                // Testează direct endpoint-ul /login pentru a vedea dacă API-ul răspunde
+                const response = await fetch(`${API_BASE_URL}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username: 'test', password: 'test' }),
+                    signal: AbortSignal.timeout(5000) // timeout 5 secunde
+                });
+                
+                // Dacă primim răspuns (chiar dacă e eroare de autentificare), API-ul funcționează
+                if (response.status === 400 || response.status === 401 || response.ok) {
+                    isApiConnected = true;
+                    statusElement.textContent = '✅ API conectat';
+                    statusElement.className = 'connection-status status-connected';
+                    document.getElementById('config-section').style.display = 'none';
+                    showMessage('API conectat cu succes! Poți să te autentifici.', 'success');
+                } else {
+                    throw new Error('API nu răspunde corect');
+                }
+            } catch (error) {
+                isApiConnected = false;
+                statusElement.textContent = '❌ API deconectat';
+                statusElement.className = 'connection-status status-disconnected';
+                document.getElementById('config-section').style.display = 'block';
+                
+                console.error('Eroare conexiune API:', error);
+                showMessage(`Nu se poate conecta la API: ${API_BASE_URL}. Verifică dacă serverul colegului rulează.`, 'error');
+            }
+        }
+
+        // Funcție pentru afișarea mesajelor
+        function showMessage(message, type = 'info') {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                messagesDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        // Gestionare login pentru medici (adaptat pentru API-ul colegului)
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                // Folosește exact formatul pe care îl așteaptă API-ul colegului
+                const response = await fetch(`${API_BASE_URL}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        username: email,  // API-ul colegului folosește "username" 
+                        password: password 
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.token) {
+                    authToken = data.token;
+                    
+                    // Obține profilul utilizatorului
+                    await getUserProfile();
+                    
+                    localStorage.setItem('authToken', authToken);
+                    localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
+                    
+                    showMessage('Autentificare reușită!', 'success');
+                    showDashboard();
+                } else {
+                    showMessage(data.message || 'Email sau parolă incorectă', 'error');
+                }
+            } catch (error) {
+                showMessage('Eroare de conexiune la API. Verifică dacă serverul rulează.', 'error');
+                console.error('Eroare login:', error);
+            }
+        }
+
+        // Obține profilul utilizatorului după login
+        async function getUserProfile() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/profile`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const profileData = await response.json();
+                    currentDoctor = {
+                        id: profileData.id || profileData._id,
+                        nume: profileData.username || profileData.nume || 'Doctor',
+                        email: profileData.email || document.getElementById('login-email').value
+                    };
+                } else {
+                    // Dacă nu merge /profile, folosește datele de bază
+                    currentDoctor = {
+                        nume: 'Doctor',
+                        email: document.getElementById('login-email').value
+                    };
+                }
+            } catch (error) {
+                console.error('Eroare la obținerea profilului:', error);
+                currentDoctor = {
+                    nume: 'Doctor',
+                    email: document.getElementById('login-email').value
+                };
+            }
+        }
+
+        // Afișare dashboard pentru medici
+        async function showDashboard() {
+            document.getElementById('auth-section').style.display = 'none';
+            document.getElementById('config-section').style.display = 'none';
+            document.getElementById('dashboard').classList.add('active');
+            
+            // Actualizează informațiile medicului
+            document.getElementById('doctor-name').textContent = currentDoctor.nume || currentDoctor.username || 'Doctor';
+            document.getElementById('doctor-email').textContent = currentDoctor.email || 'doctor@spital.ro';
+            
+            // Încarcă lista pacienților
+            await loadPatients();
+            
+            // Pornește actualizarea automată
+            startMonitoring();
+        }
+
+        // Încărcare lista pacienților din API
+        async function loadPatients() {
+            try {
+                // Încearcă să obții lista pacienților
+                let response = await fetch(`${API_BASE_URL}/medic/${currentDoctor.id}/pacienti`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                // Dacă nu merge cu ID-ul medicului, încearcă un endpoint generic
+                if (!response.ok) {
+                    response = await fetch(`${API_BASE_URL}/pacienti`, {
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`
+                        }
+                    });
+                }
+
+                if (response.ok) {
+                    const patients = await response.json();
+                    displayPatients(patients);
+                } else {
+                    throw new Error('Nu s-au putut încărca pacienții');
+                }
+            } catch (error) {
+                console.error('Eroare la încărcarea pacienților:', error);
+                
+                // Afișează mesaj că nu sunt pacienți sau API-ul nu e gata
+                document.getElementById('patients-container').innerHTML = `
+                    <div class="error">
+                        <strong>Nu s-au putut încărca pacienții!</strong><br>
+                        Posibile cauze:<br>
+                        • API-ul colegului nu are endpoint-ul pentru pacienți<br>
+                        • Nu există pacienți în baza de date<br>
+                        • Problema de autentificare<br><br>
+                        <strong>Pentru colegul tău:</strong> Verifică dacă sunt endpoint-urile:<br>
+                        • <code>GET /pacienti</code> sau <code>GET /medic/{id}/pacienti</code>
+                    </div>
+                `;
+            }
+        }
+
+        // Afișare lista pacienților în interfață
+        function displayPatients(patients) {
+            const container = document.getElementById('patients-container');
+            
+            if (!patients || patients.length === 0) {
+                container.innerHTML = `
+                    <div class="info">
+                        📋 Nu sunt pacienți înregistrați în sistem.
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = '';
+
+            patients.forEach(patient => {
+                const patientElement = document.createElement('div');
+                patientElement.className = 'patient-item';
+                patientElement.onclick = () => selectPatient(
+                    patient.id_pacient || patient.id, 
+                    `${patient.prenume || patient.nume} ${patient.nume || patient.prenume}`
+                );
+                
+                patientElement.innerHTML = `
+                    <div class="patient-info">
+                        <div class="patient-name">${patient.prenume || patient.nume} ${patient.nume || patient.prenume}</div>
+                        <div class="patient-details">Email: ${patient.email || 'N/A'}</div>
+                    </div>
+                    <div class="patient-status">
+                        <div class="alert-indicator alert-offline" id="alert-${patient.id_pacient || patient.id}"></div>
+                    </div>
+                `;
+                
+                container.appendChild(patientElement);
+            });
+        }
+
+        // Selectare pacient
+        function selectPatient(patientId, patientName) {
+            // Elimină selecția anterioară
+            document.querySelectorAll('.patient-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            // Selectează pacientul curent
+            event.target.closest('.patient-item').classList.add('selected');
+            
+            selectedPatientId = patientId;
+            document.getElementById('selected-patient-name').textContent = patientName;
+            document.getElementById('patient-values').classList.add('active');
+        }
+
+        // Deconectare
+        function logout() {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('currentDoctor');
+            authToken = null;
+            currentDoctor = {};
+            selectedPatientId = null;
+            
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+            
+            document.getElementById('auth-section').style.display = 'block';
+            document.getElementById('dashboard').classList.remove('active');
+            document.getElementById('patient-values').classList.remove('active');
+            showMessage('Ați fost deconectat din portal.', 'success');
+        }
+
+        // Obținere măsurători pentru un pacient
+        async function getPatientMeasurements(patientId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/masuratori`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const measurements = await response.json();
+                    return measurements;
+                } else {
+                    throw new Error('Nu s-au putut obține măsurătorile');
+                }
+            } catch (error) {
+                console.error('Eroare măsurători:', error);
+                
+                // Pentru demonstrație, returnează date simulate
+                return generateSimulatedData(patientId);
+            }
+        }
+
+        // Generare date simulate pentru demonstrație
+        function generateSimulatedData(patientId) {
+            const variations = {
+                1: { temp: 37.2, puls: 88, umiditate: 45, ecg: 0.7 },
+                2: { temp: 36.8, puls: 75, umiditate: 50, ecg: 0.5 },
+                3: { temp: 38.1, puls: 105, umiditate: 48, ecg: 0.9 },
+            };
+
+            const base = variations[patientId] || { temp: 36.5, puls: 80, umiditate: 50, ecg: 0.6 };
+            
+            return {
+                temperatura: (base.temp + (Math.random() - 0.5) * 0.4).toFixed(1),
+                puls: Math.round(base.puls + (Math.random() - 0.5) * 10),
+                umiditate: (base.umiditate + (Math.random() - 0.5) * 5).toFixed(1),
+                ecg: (base.ecg + (Math.random() - 0.5) * 0.2).toFixed(2),
+                timestamp: new Date().toLocaleString('ro-RO')
+            };
+        }
+
+        // Actualizare statusuri pacienți
+        async function updatePatientsStatus() {
+            if (!isApiConnected) return;
+            
+            try {
+                const patientElements = document.querySelectorAll('.patient-item');
+                
+                for (let element of patientElements) {
+                    const alertElement = element.querySelector('.alert-indicator');
+                    const patientId = alertElement.id.replace('alert-', '');
+                    
+                    const measurements = await getPatientMeasurements(patientId);
+                    updatePatientAlert(patientId, measurements);
+                    
+                    // Dacă este pacientul selectat, actualizează valorile
+                    if (selectedPatientId == patientId) {
+                        updateSelectedPatientValues(measurements);
+                    }
+                }
+                
+                document.getElementById('last-update').textContent = new Date().toLocaleString('ro-RO');
+            } catch (error) {
+                console.error('Eroare la actualizarea statusului:', error);
+            }
+        }
+
+        // Actualizare bulinuță alertă pentru un pacient
+        function updatePatientAlert(patientId, measurements) {
+            const alertElement = document.getElementById(`alert-${patientId}`);
+            if (!alertElement) return;
+
+            const temp = parseFloat(measurements.temperatura);
+            const puls = parseInt(measurements.puls);
+            const ecg = parseFloat(measurements.ecg);
+
+            // Logica pentru determinarea tipului de alertă
+            let alertType = 'normal';
+            
+            // Valori critice
+            if (temp > 38.5 || temp < 35.5 || puls > 120 || puls < 50 || ecg > 1.0) {
+                alertType = 'critical';
+            }
+            // Valori de atenționare
+            else if (temp > 37.5 || temp < 36.0 || puls > 100 || puls < 60 || ecg > 0.8) {
+                alertType = 'warning';
+            }
+
+            // Actualizează clasa bulinuței
+            alertElement.className = `alert-indicator alert-${alertType}`;
+        }
+
+        // Actualizare valori pentru pacientul selectat
+        function updateSelectedPatientValues(measurements) {
+            document.getElementById('temp-value').textContent = `${measurements.temperatura}°C`;
+            document.getElementById('pulse-value').textContent = `${measurements.puls} BPM`;
+            document.getElementById('humidity-value').textContent = `${measurements.umiditate}%`;
+            document.getElementById('ecg-value').textContent = measurements.ecg;
+
+            // Actualizează statusurile
+            const temp = parseFloat(measurements.temperatura);
+            const puls = parseInt(measurements.puls);
+            const ecg = parseFloat(measurements.ecg);
+
+            updateValueStatus('temp', temp, [36.0, 37.5], [35.5, 38.5]);
+            updateValueStatus('pulse', puls, [60, 100], [50, 120]);
+            updateValueStatus('ecg', ecg, [0.3, 0.8], [0.2, 1.0]);
+            
+            // Umiditatea este mai mult informativă
+            document.getElementById('humidity-status').textContent = 'Monitorizare';
+            document.getElementById('humidity-status').className = 'value-status status-normal';
+        }
+
+        // Actualizare status pentru o valoare specifică
+        function updateValueStatus(prefix, value, normalRange, criticalRange) {
+            const statusElement = document.getElementById(`${prefix}-status`);
+            
+            if (value < criticalRange[0] || value > criticalRange[1]) {
+                statusElement.textContent = 'CRITIC';
+                statusElement.className = 'value-status status-critical';
+            } else if (value < normalRange[0] || value > normalRange[1]) {
+                statusElement.textContent = 'Atenție';
+                statusElement.className = 'value-status status-warning';
+            } else {
+                statusElement.textContent = 'Normal';
+                statusElement.className = 'value-status status-normal';
+            }
+        }
+
+        // Pornește monitorizarea automată
+        function startMonitoring() {
+            updatePatientsStatus(); // Prima actualizare
+            updateInterval = setInterval(updatePatientsStatus, 5000); // La fiecare 5 secunde
+        }
+    </script>
+</body>
+</html>

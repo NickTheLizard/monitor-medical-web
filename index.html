@@ -301,6 +301,44 @@
             background: #f8f9fa;
         }
 
+        .ecg-item {
+            grid-column: span 2; /* ECG ocupă 2 coloane */
+            text-align: left;
+        }
+
+        .ecg-container {
+            background: #000;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+            position: relative;
+        }
+
+        #ecg-canvas {
+            width: 100%;
+            height: 120px;
+            display: block;
+        }
+
+        .ecg-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .ecg-bpm {
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .ecg-rhythm {
+            font-style: italic;
+        }
+
         .value-label {
             font-size: 0.9em;
             color: #666;
@@ -444,6 +482,24 @@
             <!-- Lista pacienților -->
             <div class="patients-list">
                 <h3>📋 Lista Pacienți</h3>
+                
+                <!-- Legenda pentru bulinuțe -->
+                <div style="background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 8px; padding: 15px; margin-bottom: 20px; font-size: 0.9em;">
+                    <strong>🔍 Legenda alertelor:</strong><br>
+                    <span style="display: inline-flex; align-items: center; margin-right: 15px;">
+                        <div style="width: 12px; height: 12px; background: #48bb78; border-radius: 50%; margin-right: 5px;"></div>
+                        <span>Toate parametrii normali</span>
+                    </span>
+                    <span style="display: inline-flex; align-items: center; margin-right: 15px;">
+                        <div style="width: 12px; height: 12px; background: #ed8936; border-radius: 50%; margin-right: 5px;"></div>
+                        <span>Cel puțin un parametru la limită</span>
+                    </span>
+                    <span style="display: inline-flex; align-items: center;">
+                        <div style="width: 12px; height: 12px; background: #e53e3e; border-radius: 50%; margin-right: 5px;"></div>
+                        <span>Cel puțin un parametru critic</span>
+                    </span>
+                </div>
+                
                 <div id="patients-container">
                     <div class="info">
                         📡 Se încearcă conectarea la API pentru încărcarea pacienților...
@@ -470,10 +526,16 @@
                         <div class="value-number" id="humidity-value">--%</div>
                         <div class="value-status status-normal" id="humidity-status">-</div>
                     </div>
-                    <div class="value-item">
-                        <div class="value-label">ECG</div>
-                        <div class="value-number" id="ecg-value">--</div>
-                        <div class="value-status status-normal" id="ecg-status">-</div>
+                    <div class="value-item ecg-item">
+                        <div class="value-label">Electrocardiogramă (ECG)</div>
+                        <div class="ecg-container">
+                            <canvas id="ecg-canvas" width="300" height="120"></canvas>
+                            <div class="ecg-info">
+                                <span class="ecg-bpm" id="ecg-bpm">75 BPM</span>
+                                <span class="ecg-rhythm" id="ecg-rhythm">Ritm sinusal normal</span>
+                            </div>
+                        </div>
+                        <div class="value-status status-normal" id="ecg-status">Normal</div>
                     </div>
                 </div>
             </div>
@@ -493,7 +555,14 @@
         let updateInterval = null;
         let isApiConnected = false;
 
-        // Inițializare la încărcarea paginii
+        // Variabile pentru ECG
+        let ecgCanvas = null;
+        let ecgCtx = null;
+        let ecgData = [];
+        let ecgAnimation = null;
+        let ecgTime = 0;
+
+        // Inițializare când se încarcă aplicația
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('api-url').value = API_BASE_URL;
             testApiConnection();
@@ -655,20 +724,249 @@
             // Încarcă lista pacienților
             await loadPatients();
             
+            // Inițializează ECG canvas
+            initializeECG();
+            
             // Pornește actualizarea automată
             startMonitoring();
         }
 
-        // Încărcare lista pacienților din API
+        // Inițializare grafic ECG
+        function initializeECG() {
+            ecgCanvas = document.getElementById('ecg-canvas');
+            if (!ecgCanvas) return;
+            
+            ecgCtx = ecgCanvas.getContext('2d');
+            
+            // Setează dimensiunile canvas-ului
+            const rect = ecgCanvas.getBoundingClientRect();
+            ecgCanvas.width = rect.width * 2; // Pentru claritate pe ecrane HD
+            ecgCanvas.height = rect.height * 2;
+            ecgCtx.scale(2, 2);
+            
+            // Pornește animația ECG
+            startECGAnimation();
+        }
+
+        // Generare undă ECG realistă
+        function generateECGWave(time, heartRate = 75, anomaly = false) {
+            const beatInterval = 60 / heartRate; // Intervalul între bătăi în secunde
+            const beatPhase = (time % beatInterval) / beatInterval; // Faza curentă a bătăii (0-1)
+            
+            let amplitude = 0;
+            
+            if (beatPhase < 0.1) {
+                // Unda P (atriale)
+                amplitude = 0.2 * Math.sin(beatPhase * 10 * Math.PI);
+            } else if (beatPhase < 0.2) {
+                // PR interval
+                amplitude = 0;
+            } else if (beatPhase < 0.35) {
+                // Complexul QRS (ventriculară)
+                const qrsPhase = (beatPhase - 0.2) / 0.15;
+                if (qrsPhase < 0.3) {
+                    amplitude = -0.3 * Math.sin(qrsPhase * 3.33 * Math.PI);
+                } else if (qrsPhase < 0.7) {
+                    amplitude = 1.5 * Math.sin((qrsPhase - 0.3) * 2.5 * Math.PI);
+                } else {
+                    amplitude = -0.4 * Math.sin((qrsPhase - 0.7) * 3.33 * Math.PI);
+                }
+            } else if (beatPhase < 0.5) {
+                // ST segment
+                amplitude = 0;
+            } else if (beatPhase < 0.7) {
+                // Unda T (repolarizare)
+                amplitude = 0.3 * Math.sin((beatPhase - 0.5) * 5 * Math.PI);
+            } else {
+                // Linia de bază
+                amplitude = 0;
+            }
+            
+            // Adaugă anomalii dacă sunt detectate
+            if (anomaly) {
+                amplitude += 0.2 * Math.sin(time * 20) * Math.random();
+            }
+            
+            // Adaugă zgomot medical realist
+            amplitude += (Math.random() - 0.5) * 0.05;
+            
+            return amplitude;
+        }
+
+        // Animație ECG în timp real
+        function startECGAnimation() {
+            const canvas = ecgCanvas;
+            const ctx = ecgCtx;
+            if (!canvas || !ctx) return;
+            
+            const width = canvas.width / 2;
+            const height = canvas.height / 2;
+            const centerY = height / 2;
+            
+            function animate() {
+                // Curăță canvas-ul
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, width, height);
+                
+                // Desenează grila ECG
+                drawECGGrid(ctx, width, height);
+                
+                // Calculează parametrii ECG
+                const currentTime = Date.now() / 1000;
+                const heartRate = getCurrentHeartRate();
+                const hasAnomaly = isECGAnomalous();
+                
+                // Desenează unda ECG
+                ctx.strokeStyle = hasAnomaly ? '#ff4444' : '#00ff00';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                
+                const samplesPerSecond = 50;
+                const secondsVisible = 6;
+                const totalSamples = samplesPerSecond * secondsVisible;
+                
+                for (let i = 0; i < totalSamples; i++) {
+                    const timeOffset = (i / samplesPerSecond) - secondsVisible;
+                    const sampleTime = currentTime + timeOffset;
+                    const amplitude = generateECGWave(sampleTime, heartRate, hasAnomaly);
+                    
+                    const x = (i / totalSamples) * width;
+                    const y = centerY - (amplitude * centerY * 0.8);
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                
+                ctx.stroke();
+                
+                // Actualizează informațiile ECG
+                updateECGInfo(heartRate, hasAnomaly);
+                
+                ecgAnimation = requestAnimationFrame(animate);
+            }
+            
+            animate();
+        }
+
+        // Desenează grila ECG ca pe monitoarele medicale
+        function drawECGGrid(ctx, width, height) {
+            ctx.strokeStyle = '#004400';
+            ctx.lineWidth = 0.5;
+            
+            // Linii verticale (timpul)
+            const verticalSpacing = width / 30;
+            for (let x = 0; x < width; x += verticalSpacing) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            
+            // Linii orizontale (amplitudinea)
+            const horizontalSpacing = height / 10;
+            for (let y = 0; y < height; y += horizontalSpacing) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+            
+            // Linia centrală mai groasă
+            ctx.strokeStyle = '#006600';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+        }
+
+        // Obține frecvența cardiacă curentă
+        function getCurrentHeartRate() {
+            if (selectedPatientId) {
+                const pulseElement = document.getElementById('pulse-value');
+                const pulseText = pulseElement.textContent;
+                const pulse = parseInt(pulseText.replace(' BPM', ''));
+                return isNaN(pulse) ? 75 : pulse;
+            }
+            return 75;
+        }
+
+        // Verifică dacă ECG-ul are anomalii
+        function isECGAnomalous() {
+            if (selectedPatientId) {
+                const statusElement = document.getElementById('ecg-status');
+                return statusElement.className.includes('critical') || statusElement.className.includes('warning');
+            }
+            return false;
+        }
+
+        // Actualizează informațiile ECG
+        function updateECGInfo(heartRate, hasAnomaly) {
+            const bpmElement = document.getElementById('ecg-bpm');
+            const rhythmElement = document.getElementById('ecg-rhythm');
+            
+            if (bpmElement) {
+                bpmElement.textContent = `${heartRate} BPM`;
+            }
+            
+            if (rhythmElement) {
+                if (hasAnomaly) {
+                    rhythmElement.textContent = 'Aritmie detectată';
+                    rhythmElement.style.color = '#ff4444';
+                } else if (heartRate < 60) {
+                    rhythmElement.textContent = 'Bradicardie';
+                    rhythmElement.style.color = '#ffaa00';
+                } else if (heartRate > 100) {
+                    rhythmElement.textContent = 'Tahicardie';
+                    rhythmElement.style.color = '#ffaa00';
+                } else {
+                    rhythmElement.textContent = 'Ritm sinusal normal';
+                    rhythmElement.style.color = '#00ff00';
+                }
+            }
+        }
+
+                // Încărcare lista pacienților din API
         async function loadPatients() {
             try {
                 // Dacă e mod demo, folosește date simulate
                 if (authToken === 'demo_token_123') {
                     const mockPatients = [
-                        { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com' },
-                        { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com' },
-                        { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com' },
-                        { id_pacient: 4, nume: 'Georgescu', prenume: 'Ana', email: 'ana.georgescu@email.com' }
+                        { 
+                            id_pacient: 1, 
+                            nume: 'Popescu', 
+                            prenume: 'Ion', 
+                            email: 'ion.popescu@email.com',
+                            diagnostic: 'Infecție respiratorie',
+                            camera: '101'
+                        },
+                        { 
+                            id_pacient: 2, 
+                            nume: 'Ionescu', 
+                            prenume: 'Maria', 
+                            email: 'maria.ionescu@email.com',
+                            diagnostic: 'Recuperare post-operatorie',
+                            camera: '102'
+                        },
+                        { 
+                            id_pacient: 3, 
+                            nume: 'Dumitrescu', 
+                            prenume: 'Gheorghe', 
+                            email: 'gheorghe.dumitrescu@email.com',
+                            diagnostic: 'Fibrilație atrială',
+                            camera: '103'
+                        },
+                        { 
+                            id_pacient: 4, 
+                            nume: 'Georgescu', 
+                            prenume: 'Ana', 
+                            email: 'ana.georgescu@email.com',
+                            diagnostic: 'Hipotensiune arterială',
+                            camera: '104'
+                        }
                     ];
                     displayPatients(mockPatients);
                     return;
@@ -701,10 +999,10 @@
                 
                 // Dacă API-ul nu funcționează, folosește date simulate
                 const mockPatients = [
-                    { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com' },
-                    { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com' },
-                    { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com' },
-                    { id_pacient: 4, nume: 'Georgescu', prenume: 'Ana', email: 'ana.georgescu@email.com' }
+                    { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com', diagnostic: 'Infecție respiratorie', camera: '101' },
+                    { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com', diagnostic: 'Post-operator', camera: '102' },
+                    { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com', diagnostic: 'Aritmie cardiacă', camera: '103' },
+                    { id_pacient: 4, nume: 'Georgescu', prenume: 'Ana', email: 'ana.georgescu@email.com', diagnostic: 'Hipotensiune', camera: '104' }
                 ];
                 displayPatients(mockPatients);
                 
@@ -738,7 +1036,11 @@
                 patientElement.innerHTML = `
                     <div class="patient-info">
                         <div class="patient-name">${patient.prenume || patient.nume} ${patient.nume || patient.prenume}</div>
-                        <div class="patient-details">Email: ${patient.email || 'N/A'}</div>
+                        <div class="patient-details">
+                            📧 ${patient.email || 'N/A'} | 
+                            🏥 Camera ${patient.camera || 'N/A'} | 
+                            📋 ${patient.diagnostic || 'Monitorizare generală'}
+                        </div>
                     </div>
                     <div class="patient-status">
                         <div class="alert-indicator alert-offline" id="alert-${patient.id_pacient || patient.id}"></div>
@@ -807,20 +1109,63 @@
 
         // Generare date simulate pentru demonstrație
         function generateSimulatedData(patientId) {
-            const variations = {
-                1: { temp: 37.2, puls: 88, umiditate: 45, ecg: 0.7 },
-                2: { temp: 36.8, puls: 75, umiditate: 50, ecg: 0.5 },
-                3: { temp: 38.1, puls: 105, umiditate: 48, ecg: 0.9 },
+            const patientProfiles = {
+                1: { // Ion Popescu - Pacient cu febră și tahicardie
+                    name: "Ion Popescu",
+                    condition: "Infecție respiratorie",
+                    temp: { base: 38.2, variation: 0.4 },
+                    puls: { base: 105, variation: 15 },
+                    umiditate: { base: 45, variation: 5 },
+                    ecg: { base: 0.7, variation: 0.2, anomaly: false }
+                },
+                2: { // Maria Ionescu - Pacient stabil, post-operator
+                    name: "Maria Ionescu", 
+                    condition: "Recuperare post-operatorie",
+                    temp: { base: 36.4, variation: 0.2 },
+                    puls: { base: 72, variation: 8 },
+                    umiditate: { base: 50, variation: 3 },
+                    ecg: { base: 0.5, variation: 0.1, anomaly: false }
+                },
+                3: { // Gheorghe Dumitrescu - Pacient cu aritmie cardiacă
+                    name: "Gheorghe Dumitrescu",
+                    condition: "Fibrilație atrială",
+                    temp: { base: 36.8, variation: 0.3 },
+                    puls: { base: 95, variation: 25 }, // Puls irregular
+                    umiditate: { base: 48, variation: 4 },
+                    ecg: { base: 0.9, variation: 0.4, anomaly: true } // Aritmie
+                },
+                4: { // Ana Georgescu - Pacient cu hipotensiune și bradicardie
+                    name: "Ana Georgescu",
+                    condition: "Hipotensiune arterială", 
+                    temp: { base: 36.1, variation: 0.2 },
+                    puls: { base: 55, variation: 8 }, // Bradicardie
+                    umiditate: { base: 52, variation: 3 },
+                    ecg: { base: 0.4, variation: 0.1, anomaly: false }
+                }
             };
 
-            const base = variations[patientId] || { temp: 36.5, puls: 80, umiditate: 50, ecg: 0.6 };
+            const profile = patientProfiles[patientId] || patientProfiles[2]; // Default la pacient stabil
+            
+            // Generare valori cu variații realiste
+            const temp = profile.temp.base + (Math.random() - 0.5) * profile.temp.variation;
+            const puls = Math.round(profile.puls.base + (Math.random() - 0.5) * profile.puls.variation);
+            const umiditate = profile.umiditate.base + (Math.random() - 0.5) * profile.umiditate.variation;
+            const ecg = Math.max(0.1, profile.ecg.base + (Math.random() - 0.5) * profile.ecg.variation);
+            
+            // Simulare deteriorare/îmbunătățire în timp
+            const timeVariation = Math.sin(Date.now() / 30000) * 0.1; // Ciclu de 1 minut
             
             return {
-                temperatura: (base.temp + (Math.random() - 0.5) * 0.4).toFixed(1),
-                puls: Math.round(base.puls + (Math.random() - 0.5) * 10),
-                umiditate: (base.umiditate + (Math.random() - 0.5) * 5).toFixed(1),
-                ecg: (base.ecg + (Math.random() - 0.5) * 0.2).toFixed(2),
-                timestamp: new Date().toLocaleString('ro-RO')
+                temperatura: Math.max(35.0, Math.min(42.0, temp + timeVariation)).toFixed(1),
+                puls: Math.max(30, Math.min(200, Math.round(puls + timeVariation * 5))),
+                umiditate: Math.max(20, Math.min(80, umiditate + timeVariation * 2)).toFixed(1),
+                ecg: Math.max(0.1, Math.min(2.0, ecg + timeVariation * 0.1)).toFixed(2),
+                timestamp: new Date().toLocaleString('ro-RO'),
+                patientInfo: {
+                    name: profile.name,
+                    condition: profile.condition,
+                    hasAnomaly: profile.ecg.anomaly
+                }
             };
         }
 
@@ -880,20 +1225,22 @@
             document.getElementById('temp-value').textContent = `${measurements.temperatura}°C`;
             document.getElementById('pulse-value').textContent = `${measurements.puls} BPM`;
             document.getElementById('humidity-value').textContent = `${measurements.umiditate}%`;
-            document.getElementById('ecg-value').textContent = measurements.ecg;
 
             // Actualizează statusurile
             const temp = parseFloat(measurements.temperatura);
             const puls = parseInt(measurements.puls);
-            const ecg = parseFloat(measurements.ecg);
+            const ecgValue = parseFloat(measurements.ecg);
 
             updateValueStatus('temp', temp, [36.0, 37.5], [35.5, 38.5]);
             updateValueStatus('pulse', puls, [60, 100], [50, 120]);
-            updateValueStatus('ecg', ecg, [0.3, 0.8], [0.2, 1.0]);
+            updateValueStatus('ecg', ecgValue, [0.3, 0.8], [0.2, 1.0]);
             
             // Umiditatea este mai mult informativă
             document.getElementById('humidity-status').textContent = 'Monitorizare';
             document.getElementById('humidity-status').className = 'value-status status-normal';
+            
+            // ECG-ul se actualizează automat prin animație
+            // Nu mai setăm valoarea manual pentru că avem graficul
         }
 
         // Actualizare status pentru o valoare specifică

@@ -555,12 +555,15 @@
         let updateInterval = null;
         let isApiConnected = false;
 
-        // Variabile pentru ECG
+        // Variabile pentru ECG în timp real
         let ecgCanvas = null;
         let ecgCtx = null;
-        let ecgData = [];
+        let ecgDataBuffer = []; // Buffer pentru punctele ECG primite
         let ecgAnimation = null;
         let ecgTime = 0;
+        let maxECGBufferSize = 500; // Păstrăm ultimele 500 de puncte (5 secunde la 100Hz)
+        let ecgSampleRate = 100; // Hz - câte puncte pe secundă primim de la Arduino
+        let isReceivingRealECG = false; // Flag pentru date reale vs simulate
 
         // Inițializare când se încarcă aplicația
         document.addEventListener('DOMContentLoaded', function() {
@@ -748,52 +751,81 @@
             startECGAnimation();
         }
 
-        // Generare undă ECG realistă
-        function generateECGWave(time, heartRate = 75, anomaly = false) {
-            const beatInterval = 60 / heartRate; // Intervalul între bătăi în secunde
-            const beatPhase = (time % beatInterval) / beatInterval; // Faza curentă a bătăii (0-1)
-            
-            let amplitude = 0;
-            
-            if (beatPhase < 0.1) {
-                // Unda P (atriale)
-                amplitude = 0.2 * Math.sin(beatPhase * 10 * Math.PI);
-            } else if (beatPhase < 0.2) {
-                // PR interval
-                amplitude = 0;
-            } else if (beatPhase < 0.35) {
-                // Complexul QRS (ventriculară)
-                const qrsPhase = (beatPhase - 0.2) / 0.15;
-                if (qrsPhase < 0.3) {
-                    amplitude = -0.3 * Math.sin(qrsPhase * 3.33 * Math.PI);
-                } else if (qrsPhase < 0.7) {
-                    amplitude = 1.5 * Math.sin((qrsPhase - 0.3) * 2.5 * Math.PI);
-                } else {
-                    amplitude = -0.4 * Math.sin((qrsPhase - 0.7) * 3.33 * Math.PI);
+        // Procesare date ECG în timp real de la cloud
+        function processRealTimeECG(ecgDataFromCloud) {
+            try {
+                // Verifică tipul datelor primite
+                if (Array.isArray(ecgDataFromCloud)) {
+                    // Cazul 1: Array cu puncte ECG raw de la Arduino
+                    addECGPointsToBuffer(ecgDataFromCloud);
+                } else if (ecgDataFromCloud.rawData) {
+                    // Cazul 2: Obiect cu date procesate + puncte raw
+                    addECGPointsToBuffer(ecgDataFromCloud.rawData);
+                    updateECGMetrics(ecgDataFromCloud);
+                } else if (typeof ecgDataFromCloud === 'number') {
+                    // Cazul 3: Un singur punct ECG
+                    addECGPointsToBuffer([ecgDataFromCloud]);
                 }
-            } else if (beatPhase < 0.5) {
-                // ST segment
-                amplitude = 0;
-            } else if (beatPhase < 0.7) {
-                // Unda T (repolarizare)
-                amplitude = 0.3 * Math.sin((beatPhase - 0.5) * 5 * Math.PI);
-            } else {
-                // Linia de bază
-                amplitude = 0;
+                
+                isReceivingRealECG = true;
+                console.log(`ECG buffer size: ${ecgDataBuffer.length} puncte`);
+            } catch (error) {
+                console.error('Eroare procesare ECG real:', error);
+                isReceivingRealECG = false;
             }
-            
-            // Adaugă anomalii dacă sunt detectate
-            if (anomaly) {
-                amplitude += 0.2 * Math.sin(time * 20) * Math.random();
-            }
-            
-            // Adaugă zgomot medical realist
-            amplitude += (Math.random() - 0.5) * 0.05;
-            
-            return amplitude;
         }
 
-        // Animație ECG în timp real
+        // Adaugă puncte ECG în buffer
+        function addECGPointsToBuffer(newPoints) {
+            // Adaugă punctele noi la sfârșitul buffer-ului
+            ecgDataBuffer.push(...newPoints);
+            
+            // Păstrează doar ultimele puncte (sliding window)
+            if (ecgDataBuffer.length > maxECGBufferSize) {
+                ecgDataBuffer = ecgDataBuffer.slice(-maxECGBufferSize);
+            }
+        }
+
+        // Actualizează metrici ECG (BPM, ritm)
+        function updateECGMetrics(ecgData) {
+            if (ecgData.heartRate) {
+                document.getElementById('ecg-bpm').textContent = `${ecgData.heartRate} BPM`;
+            }
+            
+            if (ecgData.rhythm) {
+                const rhythmElement = document.getElementById('ecg-rhythm');
+                rhythmElement.textContent = getECGRhythmText(ecgData.rhythm);
+                rhythmElement.style.color = getECGRhythmColor(ecgData.rhythm);
+            }
+        }
+
+        // Convertește codul ritmului în text
+        function getECGRhythmText(rhythm) {
+            const rhythms = {
+                'normal': 'Ritm sinusal normal',
+                'arrhythmia': 'Aritmie detectată',
+                'tachycardia': 'Tahicardie',
+                'bradycardia': 'Bradicardie',
+                'irregular': 'Ritm neregulat',
+                'atrial_fib': 'Fibrilație atrială'
+            };
+            return rhythms[rhythm] || 'Ritm necunoscut';
+        }
+
+        // Culoarea pentru tipul de ritm
+        function getECGRhythmColor(rhythm) {
+            const colors = {
+                'normal': '#00ff00',
+                'arrhythmia': '#ff4444',
+                'tachycardia': '#ffaa00',
+                'bradycardia': '#ffaa00',
+                'irregular': '#ff4444',
+                'atrial_fib': '#ff4444'
+            };
+            return colors[rhythm] || '#ffffff';
+        }
+
+        // Animație ECG în timp real (adaptată pentru date reale)
         function startECGAnimation() {
             const canvas = ecgCanvas;
             const ctx = ecgCtx;
@@ -811,44 +843,153 @@
                 // Desenează grila ECG
                 drawECGGrid(ctx, width, height);
                 
-                // Calculează parametrii ECG
-                const currentTime = Date.now() / 1000;
-                const heartRate = getCurrentHeartRate();
-                const hasAnomaly = isECGAnomalous();
+                let hasAnomaly = false;
                 
-                // Desenează unda ECG
-                ctx.strokeStyle = hasAnomaly ? '#ff4444' : '#00ff00';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                
-                const samplesPerSecond = 50;
-                const secondsVisible = 6;
-                const totalSamples = samplesPerSecond * secondsVisible;
-                
-                for (let i = 0; i < totalSamples; i++) {
-                    const timeOffset = (i / samplesPerSecond) - secondsVisible;
-                    const sampleTime = currentTime + timeOffset;
-                    const amplitude = generateECGWave(sampleTime, heartRate, hasAnomaly);
-                    
-                    const x = (i / totalSamples) * width;
-                    const y = centerY - (amplitude * centerY * 0.8);
-                    
-                    if (i === 0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
+                if (isReceivingRealECG && ecgDataBuffer.length > 0) {
+                    // MODUL REAL: Desenează date reale de la Arduino
+                    drawRealECGData(ctx, width, height, centerY);
+                    hasAnomaly = detectECGAnomalies();
+                } else {
+                    // MODUL SIMULAT: Generează undă matematică
+                    drawSimulatedECGData(ctx, width, height, centerY);
+                    hasAnomaly = isECGAnomalous();
                 }
-                
-                ctx.stroke();
-                
-                // Actualizează informațiile ECG
-                updateECGInfo(heartRate, hasAnomaly);
                 
                 ecgAnimation = requestAnimationFrame(animate);
             }
             
             animate();
+        }
+
+        // Desenează date ECG reale de la Arduino
+        function drawRealECGData(ctx, width, height, centerY) {
+            if (ecgDataBuffer.length < 2) return;
+            
+            // Detectează anomalii pentru culoare
+            const hasAnomaly = detectECGAnomalies();
+            ctx.strokeStyle = hasAnomaly ? '#ff4444' : '#00ff00';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            // Desenează ultimele puncte din buffer
+            const pointsToShow = Math.min(ecgDataBuffer.length, width);
+            const startIndex = Math.max(0, ecgDataBuffer.length - pointsToShow);
+            
+            for (let i = 0; i < pointsToShow; i++) {
+                const dataIndex = startIndex + i;
+                const amplitude = ecgDataBuffer[dataIndex];
+                
+                // Normalizează amplitudinea (presupunem valori între -2 și +2)
+                const normalizedAmplitude = Math.max(-1, Math.min(1, amplitude / 2));
+                
+                const x = (i / pointsToShow) * width;
+                const y = centerY - (normalizedAmplitude * centerY * 0.8);
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+            
+            // Efect de "sweep" - linie verticală care se mișcă
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const sweepX = (Date.now() / 50) % width; // Se mișcă de la stânga la dreapta
+            ctx.moveTo(sweepX, 0);
+            ctx.lineTo(sweepX, height);
+            ctx.stroke();
+        }
+
+        // Desenează date ECG simulate (pentru demo)
+        function drawSimulatedECGData(ctx, width, height, centerY) {
+            const currentTime = Date.now() / 1000;
+            const heartRate = getCurrentHeartRate();
+            const hasAnomaly = isECGAnomalous();
+            
+            ctx.strokeStyle = hasAnomaly ? '#ff4444' : '#00ff00';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const samplesPerSecond = 50;
+            const secondsVisible = 6;
+            const totalSamples = samplesPerSecond * secondsVisible;
+            
+            for (let i = 0; i < totalSamples; i++) {
+                const timeOffset = (i / samplesPerSecond) - secondsVisible;
+                const sampleTime = currentTime + timeOffset;
+                const amplitude = generateECGWave(sampleTime, heartRate, hasAnomaly);
+                
+                const x = (i / totalSamples) * width;
+                const y = centerY - (amplitude * centerY * 0.8);
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+
+        // Detectează anomalii în datele ECG reale
+        function detectECGAnomalies() {
+            if (ecgDataBuffer.length < 100) return false; // Trebuie date suficiente
+            
+            // Verifică ultimele 100 de puncte pentru anomalii
+            const recentData = ecgDataBuffer.slice(-100);
+            
+            // Calculează variația standard
+            const mean = recentData.reduce((a, b) => a + b, 0) / recentData.length;
+            const variance = recentData.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / recentData.length;
+            const stdDev = Math.sqrt(variance);
+            
+            // Detectează valori extreme (posibile aritmii)
+            const extremeValues = recentData.filter(val => Math.abs(val - mean) > 3 * stdDev);
+            
+            // Dacă >5% din puncte sunt extreme, e posibilă aritmie
+            return extremeValues.length > recentData.length * 0.05;
+        }
+
+        // Generare undă ECG realistă (pentru modul simulat)
+        function generateECGWave(time, heartRate = 75, anomaly = false) {
+            const beatInterval = 60 / heartRate;
+            const beatPhase = (time % beatInterval) / beatInterval;
+            
+            let amplitude = 0;
+            
+            if (beatPhase < 0.1) {
+                amplitude = 0.2 * Math.sin(beatPhase * 10 * Math.PI);
+            } else if (beatPhase < 0.2) {
+                amplitude = 0;
+            } else if (beatPhase < 0.35) {
+                const qrsPhase = (beatPhase - 0.2) / 0.15;
+                if (qrsPhase < 0.3) {
+                    amplitude = -0.3 * Math.sin(qrsPhase * 3.33 * Math.PI);
+                } else if (qrsPhase < 0.7) {
+                    amplitude = 1.5 * Math.sin((qrsPhase - 0.3) * 2.5 * Math.PI);
+                } else {
+                    amplitude = -0.4 * Math.sin((qrsPhase - 0.7) * 3.33 * Math.PI);
+                }
+            } else if (beatPhase < 0.5) {
+                amplitude = 0;
+            } else if (beatPhase < 0.7) {
+                amplitude = 0.3 * Math.sin((beatPhase - 0.5) * 5 * Math.PI);
+            } else {
+                amplitude = 0;
+            }
+            
+            if (anomaly) {
+                amplitude += 0.2 * Math.sin(time * 20) * Math.random();
+            }
+            
+            amplitude += (Math.random() - 0.5) * 0.05;
+            
+            return amplitude;
         }
 
         // Desenează grila ECG ca pe monitoarele medicale
@@ -1051,8 +1192,10 @@
             });
         }
 
-        // Selectare pacient
+        // Selectare pacient (îmbunătățită)
         function selectPatient(patientId, patientName) {
+            console.log(`Selectare pacient: ${patientId} - ${patientName}`);
+            
             // Elimină selecția anterioară
             document.querySelectorAll('.patient-item').forEach(item => {
                 item.classList.remove('selected');
@@ -1064,6 +1207,18 @@
             selectedPatientId = patientId;
             document.getElementById('selected-patient-name').textContent = patientName;
             document.getElementById('patient-values').classList.add('active');
+            
+            // Actualizează imediat măsurătorile pentru pacientul selectat
+            setTimeout(async () => {
+                const measurements = await getPatientMeasurements(patientId);
+                updateSelectedPatientValues(measurements);
+                
+                // Reinițializează ECG pentru noul pacient
+                if (ecgAnimation) {
+                    cancelAnimationFrame(ecgAnimation);
+                }
+                initializeECG();
+            }, 100);
         }
 
         // Deconectare
@@ -1084,9 +1239,19 @@
             showMessage('Ați fost deconectat din portal.', 'success');
         }
 
-        // Obținere măsurători pentru un pacient
+        // Obținere măsurători pentru un pacient (îmbunătățită)
         async function getPatientMeasurements(patientId) {
+            console.log(`Obținere măsurători pentru pacientul ${patientId}`);
+            
             try {
+                // În mod demo, returnează întotdeauna date simulate
+                if (authToken === 'demo_token_123' || true) {
+                    const measurements = generateSimulatedData(patientId);
+                    console.log(`Date simulate generate pentru ${patientId}:`, measurements);
+                    return measurements;
+                }
+                
+                // Cod pentru API real (când va fi disponibil)
                 const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/masuratori`, {
                     headers: {
                         'Authorization': `Bearer ${authToken}`
@@ -1097,17 +1262,19 @@
                     const measurements = await response.json();
                     return measurements;
                 } else {
-                    throw new Error('Nu s-au putut obține măsurătorile');
+                    throw new Error('Nu s-au putut obține măsurătorile din API');
                 }
             } catch (error) {
                 console.error('Eroare măsurători:', error);
                 
-                // Pentru demonstrație, returnează date simulate
-                return generateSimulatedData(patientId);
+                // Fallback la date simulate
+                const measurements = generateSimulatedData(patientId);
+                console.log(`Fallback la date simulate pentru ${patientId}:`, measurements);
+                return measurements;
             }
         }
 
-        // Generare date simulate pentru demonstrație
+        // Generare date simulate pentru demonstrație (cu puncte ECG reale)
         function generateSimulatedData(patientId) {
             const patientProfiles = {
                 1: { // Ion Popescu - Pacient cu febră și tahicardie
@@ -1155,7 +1322,14 @@
             // Simulare deteriorare/îmbunătățire în timp
             const timeVariation = Math.sin(Date.now() / 30000) * 0.1; // Ciclu de 1 minut
             
-            return {
+            // Generare puncte ECG simulate (pentru demonstrația streaming-ului)
+            const ecgPoints = [];
+            for (let i = 0; i < 10; i++) { // 10 puncte noi la fiecare update
+                const point = ecg + (Math.random() - 0.5) * 0.3;
+                ecgPoints.push(point);
+            }
+            
+            const result = {
                 temperatura: Math.max(35.0, Math.min(42.0, temp + timeVariation)).toFixed(1),
                 puls: Math.max(30, Math.min(200, Math.round(puls + timeVariation * 5))),
                 umiditate: Math.max(20, Math.min(80, umiditate + timeVariation * 2)).toFixed(1),
@@ -1165,8 +1339,22 @@
                     name: profile.name,
                     condition: profile.condition,
                     hasAnomaly: profile.ecg.anomaly
+                },
+                // NOUA FUNCȚIONALITATE: Puncte ECG pentru streaming
+                ecgRealTime: {
+                    rawData: ecgPoints, // Array cu puncte ECG
+                    heartRate: Math.round(puls + timeVariation * 5),
+                    rhythm: profile.ecg.anomaly ? 'arrhythmia' : 'normal',
+                    sampleRate: 100 // Hz
                 }
             };
+            
+            // Simulează primirea datelor ECG în timp real
+            if (selectedPatientId == patientId) {
+                processRealTimeECG(result.ecgRealTime);
+            }
+            
+            return result;
         }
 
         // Actualizare statusuri pacienți
@@ -1275,12 +1463,68 @@
             
             showMessage('Mod demonstrație activat! Toate datele sunt simulate.', 'success');
             showDashboard();
+            
+            // Forțează pornirea monitorizării după o secundă
+            setTimeout(() => {
+                console.log('Pornire monitorizare forțată...');
+                startMonitoring();
+            }, 1000);
         }
 
         // Pornește monitorizarea automată
         function startMonitoring() {
-            updatePatientsStatus(); // Prima actualizare
-            updateInterval = setInterval(updatePatientsStatus, 5000); // La fiecare 5 secunde
+            console.log('Pornire monitorizare...');
+            
+            // Oprește intervalul anterior dacă există
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+            
+            // Prima actualizare imediată
+            updatePatientsStatus();
+            
+            // Actualizare la fiecare 3 secunde (mai rapid pentru demo)
+            updateInterval = setInterval(() => {
+                console.log('Actualizare automată...');
+                updatePatientsStatus();
+            }, 3000);
+        }
+
+        // Actualizare statusuri pacienți (îmbunătățită)
+        async function updatePatientsStatus() {
+            console.log('Actualizare statusuri pacienți...');
+            
+            try {
+                const patientElements = document.querySelectorAll('.patient-item');
+                console.log(`Găsite ${patientElements.length} elemente pacienți`);
+                
+                for (let element of patientElements) {
+                    const alertElement = element.querySelector('.alert-indicator');
+                    if (!alertElement) {
+                        console.log('Nu s-a găsit elementul de alertă');
+                        continue;
+                    }
+                    
+                    const patientId = alertElement.id.replace('alert-', '');
+                    console.log(`Actualizare pacient ID: ${patientId}`);
+                    
+                    const measurements = await getPatientMeasurements(patientId);
+                    console.log(`Măsurători pacient ${patientId}:`, measurements);
+                    
+                    updatePatientAlert(patientId, measurements);
+                    
+                    // Dacă este pacientul selectat, actualizează valorile
+                    if (selectedPatientId == patientId) {
+                        console.log(`Actualizare valori pentru pacientul selectat: ${patientId}`);
+                        updateSelectedPatientValues(measurements);
+                    }
+                }
+                
+                document.getElementById('last-update').textContent = new Date().toLocaleString('ro-RO');
+                console.log('Actualizare completă');
+            } catch (error) {
+                console.error('Eroare la actualizarea statusului:', error);
+            }
         }
     </script>
 </body>

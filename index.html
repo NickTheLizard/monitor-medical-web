@@ -420,6 +420,12 @@
                                value="Test1234!" required>
                     </div>
                     <button type="submit" class="btn">Acces Portal Medical</button>
+                    
+                    <!-- Buton pentru demonstrație -->
+                    <button type="button" class="btn" onclick="demoMode()" 
+                            style="background: #38a169; margin-top: 10px;">
+                        🎬 DEMO - Vezi aplicația fără login
+                    </button>
                 </form>
             </div>
         </div>
@@ -656,7 +662,19 @@
         // Încărcare lista pacienților din API
         async function loadPatients() {
             try {
-                // Încearcă să obții lista pacienților
+                // Dacă e mod demo, folosește date simulate
+                if (authToken === 'demo_token_123') {
+                    const mockPatients = [
+                        { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com' },
+                        { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com' },
+                        { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com' },
+                        { id_pacient: 4, nume: 'Georgescu', prenume: 'Ana', email: 'ana.georgescu@email.com' }
+                    ];
+                    displayPatients(mockPatients);
+                    return;
+                }
+
+                // Încearcă să obții lista pacienților din API real
                 let response = await fetch(`${API_BASE_URL}/medic/${currentDoctor.id}/pacienti`, {
                     headers: {
                         'Authorization': `Bearer ${authToken}`
@@ -681,18 +699,16 @@
             } catch (error) {
                 console.error('Eroare la încărcarea pacienților:', error);
                 
-                // Afișează mesaj că nu sunt pacienți sau API-ul nu e gata
-                document.getElementById('patients-container').innerHTML = `
-                    <div class="error">
-                        <strong>Nu s-au putut încărca pacienții!</strong><br>
-                        Posibile cauze:<br>
-                        • API-ul colegului nu are endpoint-ul pentru pacienți<br>
-                        • Nu există pacienți în baza de date<br>
-                        • Problema de autentificare<br><br>
-                        <strong>Pentru colegul tău:</strong> Verifică dacă sunt endpoint-urile:<br>
-                        • <code>GET /pacienti</code> sau <code>GET /medic/{id}/pacienti</code>
-                    </div>
-                `;
+                // Dacă API-ul nu funcționează, folosește date simulate
+                const mockPatients = [
+                    { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com' },
+                    { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com' },
+                    { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com' },
+                    { id_pacient: 4, nume: 'Georgescu', prenume: 'Ana', email: 'ana.georgescu@email.com' }
+                ];
+                displayPatients(mockPatients);
+                
+                showMessage('API indisponibil - se folosesc date simulate pentru demonstrație', 'info');
             }
         }
 
@@ -894,6 +910,24 @@
                 statusElement.textContent = 'Normal';
                 statusElement.className = 'value-status status-normal';
             }
+        }
+
+        // Mod demonstrație - sare peste login
+        function demoMode() {
+            // Simulează un doctor logat
+            currentDoctor = {
+                id: 1,
+                nume: 'Dr. Demo',
+                email: 'demo@spital.ro'
+            };
+            
+            authToken = 'demo_token_123';
+            
+            localStorage.setItem('authToken', authToken);
+            localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
+            
+            showMessage('Mod demonstrație activat! Toate datele sunt simulate.', 'success');
+            showDashboard();
         }
 
         // Pornește monitorizarea automată

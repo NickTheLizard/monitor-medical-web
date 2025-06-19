@@ -638,7 +638,7 @@
             }, 5000);
         }
 
-        // Gestionare login pentru medici (adaptat pentru API-ul colegului)
+        // Gestionare login pentru medici (adaptat pentru ngrok)
         async function handleLogin(event) {
             event.preventDefault();
             
@@ -653,6 +653,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'  // Skip ngrok warning page
                     },
                     body: JSON.stringify({ 
                         username: username,  // API-ul colegului folosește "username" 
@@ -696,38 +697,38 @@
             }
         }
 
-        // Obține profilul utilizatorului după login (adaptat la API-ul colegului)
+        // Obține profilul utilizatorului după login (adaptat pentru ngrok)
         async function getUserProfile() {
             try {
                 const response = await fetch(`${API_BASE_URL}/profile`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'  // Skip ngrok warning page
                     }
                 });
 
                 if (response.ok) {
-                    const profileData = await response.json();
-                    console.log('Profile data:', profileData);
-                    
-                    currentDoctor = {
-                        id: profileData._id || profileData.id || 1,
-                        nume: `Dr. ${profileData.username}` || 'Dr. Medical',
-                        email: profileData.email || `${profileData.username}@spital.ro`,
-                        username: profileData.username
-                    };
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const profileData = await response.json();
+                        console.log('Profile data:', profileData);
+                        
+                        currentDoctor = {
+                            id: profileData._id || profileData.id || 1,
+                            nume: `Dr. ${profileData.username}` || 'Dr. Medical',
+                            email: profileData.email || `${profileData.username}@spital.ro`,
+                            username: profileData.username
+                        };
+                    } else {
+                        throw new Error('Profile endpoint returnează HTML în loc de JSON');
+                    }
                 } else {
-                    console.log('Profile endpoint nu funcționează, folosesc date de bază');
-                    currentDoctor = {
-                        id: 1,
-                        nume: `Dr. ${document.getElementById('login-email').value}`,
-                        email: `${document.getElementById('login-email').value}@spital.ro`,
-                        username: document.getElementById('login-email').value
-                    };
+                    throw new Error(`Profile endpoint răspunde cu status ${response.status}`);
                 }
             } catch (error) {
-                console.error('Eroare la obținerea profilului:', error);
+                console.log('Profile endpoint nu funcționează, folosesc date de bază:', error.message);
                 currentDoctor = {
                     id: 1,
                     nume: `Dr. ${document.getElementById('login-email').value}`,
@@ -1142,28 +1143,34 @@
                 const response = await fetch(`${API_BASE_URL}/pacienti`, {
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'  // Skip ngrok warning page
                     }
                 });
 
                 console.log('Response pacienti:', response.status);
 
                 if (response.ok) {
-                    const patients = await response.json();
-                    console.log('Pacienți primiti din API:', patients);
-                    
-                    // Adaptează structura dacă e diferită
-                    const adaptedPatients = patients.map(patient => ({
-                        id_pacient: patient.id_pacient || patient.id,
-                        nume: patient.nume || 'Necunoscut',
-                        prenume: patient.prenume || 'Pacient',
-                        email: patient.email || 'N/A',
-                        diagnostic: patient.diagnostic || 'Monitorizare generală',
-                        camera: patient.camera || 'N/A'
-                    }));
-                    
-                    displayPatients(adaptedPatients);
-                    showMessage(`${adaptedPatients.length} pacienți încărcați din API real`, 'success');
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const patients = await response.json();
+                        console.log('Pacienți primiti din API:', patients);
+                        
+                        // Adaptează structura dacă e diferită
+                        const adaptedPatients = patients.map(patient => ({
+                            id_pacient: patient.id_pacient || patient.id,
+                            nume: patient.nume || 'Necunoscut',
+                            prenume: patient.prenume || 'Pacient',
+                            email: patient.email || 'N/A',
+                            diagnostic: patient.diagnostic || 'Monitorizare generală',
+                            camera: patient.camera || 'N/A'
+                        }));
+                        
+                        displayPatients(adaptedPatients);
+                        showMessage(`${adaptedPatients.length} pacienți încărcați din API real`, 'success');
+                    } else {
+                        throw new Error('API /pacienti returnează HTML în loc de JSON');
+                    }
                 } else {
                     throw new Error(`API /pacienti răspunde cu status ${response.status}`);
                 }

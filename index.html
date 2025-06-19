@@ -430,12 +430,12 @@
         <div id="config-section" class="config-section">
             <h3>⚙️ Conexiune la API-ul colegului</h3>
             <p style="margin-bottom: 15px; color: #856404;">
-                <strong>✅ API-ul colegului:</strong> <code>http://74.234.34.29:3000</code><br>
-                Endpoint-uri disponibile: <code>/login</code>, <code>/profile</code>, <code>/register</code>
+                <strong>✅ API-ul colegului (HTTPS ngrok):</strong> <code>https://6181-74-234-34-29.ngrok-free.app</code><br>
+                Endpoint-uri disponibile: <code>/login</code>, <code>/profile</code>, <code>/pacienti</code>
             </p>
             <input type="text" id="api-url" class="config-input" 
-                   placeholder="Schimbă doar dacă colegul îți dă alt URL"
-                   value="http://74.234.34.29:3000">
+                   placeholder="URL API actualizat de coleg"
+                   value="https://6181-74-234-34-29.ngrok-free.app">
             <button class="btn btn-small" onclick="saveApiConfig()">Testează conexiunea</button>
         </div>
 
@@ -548,7 +548,7 @@
 
     <script>
         // Configurare API - se va seta dinamic
-        let API_BASE_URL = localStorage.getItem('api_base_url') || 'http://74.234.34.29:3000';
+        let API_BASE_URL = localStorage.getItem('api_base_url') || 'https://6181-74-234-34-29.ngrok-free.app';
         let authToken = localStorage.getItem('authToken');
         let currentDoctor = JSON.parse(localStorage.getItem('currentDoctor') || '{}');
         let selectedPatientId = null;

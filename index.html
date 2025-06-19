@@ -1156,14 +1156,18 @@
                         const patients = await response.json();
                         console.log('Pacienți primiti din API pentru medic:', patients);
                         
-                        // Adaptează structura pacienților
+                        // Adaptează structura pacienților (compatibil cu tabelele SQL)
                         const adaptedPatients = patients.map(patient => ({
                             id_pacient: patient.id_pacient || patient.id,
                             nume: patient.nume || 'Necunoscut',
                             prenume: patient.prenume || 'Pacient',
                             email: patient.email || 'N/A',
+                            // Generează camera și diagnostic dacă lipsesc din tabela SQL
+                            camera: patient.camera || `Camera ${(patient.id_pacient || 100) + 100}`,
                             diagnostic: patient.diagnostic || 'Monitorizare generală',
-                            camera: patient.camera || 'N/A'
+                            // Adaugă informații suplimentare dacă sunt disponibile
+                            data_nasterii: patient.data_nasterii,
+                            telefon: patient.telefon
                         }));
                         
                         displayPatients(adaptedPatients);
@@ -1221,8 +1225,12 @@
                         nume: patient.nume || 'Necunoscut',
                         prenume: patient.prenume || 'Pacient',
                         email: patient.email || 'N/A',
+                        // Generează camera și diagnostic dacă lipsesc din tabela SQL
+                        camera: patient.camera || `Camera ${(patient.id_pacient || 100) + 100}`,
                         diagnostic: patient.diagnostic || 'Monitorizare generală',
-                        camera: patient.camera || 'N/A'
+                        // Adaugă informații suplimentare dacă sunt disponibile
+                        data_nasterii: patient.data_nasterii,
+                        telefon: patient.telefon
                     }));
                     
                     displayPatients(adaptedPatients);

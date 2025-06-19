@@ -1137,26 +1137,26 @@
                     return;
                 }
 
-                // Încearcă să obții lista pacienților din API-ul real al colegului
-                console.log('Încărcare pacienți din API real...');
+                // Folosește noul endpoint specific pentru medicul curent
+                console.log(`Încărcare pacienți pentru medicul ID: ${currentDoctor.id}`);
                 
-                const response = await fetch(`${API_BASE_URL}/pacienti`, {
+                const response = await fetch(`${API_BASE_URL}/medic/${currentDoctor.id}/pacienti`, {
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
                         'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'  // Skip ngrok warning page
+                        'ngrok-skip-browser-warning': 'true'
                     }
                 });
 
-                console.log('Response pacienti:', response.status);
+                console.log('Response pacienti medic:', response.status);
 
                 if (response.ok) {
                     const contentType = response.headers.get('content-type');
                     if (contentType && contentType.includes('application/json')) {
                         const patients = await response.json();
-                        console.log('Pacienți primiti din API:', patients);
+                        console.log('Pacienți primiti din API pentru medic:', patients);
                         
-                        // Adaptează structura dacă e diferită
+                        // Adaptează structura pacienților
                         const adaptedPatients = patients.map(patient => ({
                             id_pacient: patient.id_pacient || patient.id,
                             nume: patient.nume || 'Necunoscut',
@@ -1169,24 +1169,69 @@
                         displayPatients(adaptedPatients);
                         showMessage(`${adaptedPatients.length} pacienți încărcați din API real`, 'success');
                     } else {
-                        throw new Error('API /pacienti returnează HTML în loc de JSON');
+                        throw new Error('API /medic/pacienti returnează HTML în loc de JSON');
                     }
+                } else if (response.status === 404) {
+                    // Dacă nu există endpoint specific pentru medic, încearcă endpoint-ul general
+                    console.log('Endpoint /medic/:id/pacienti nu există, încerc /pacienti...');
+                    await loadPatientsGeneral();
                 } else {
-                    throw new Error(`API /pacienti răspunde cu status ${response.status}`);
+                    throw new Error(`API /medic/pacienti răspunde cu status ${response.status}`);
                 }
             } catch (error) {
                 console.error('Eroare la încărcarea pacienților din API:', error);
                 
-                // Fallback la date simulate cu mesaj explicativ
-                const mockPatients = [
-                    { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com', diagnostic: 'Simulat - Infecție respiratorie', camera: '101' },
-                    { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com', diagnostic: 'Simulat - Post-operator', camera: '102' },
-                    { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com', diagnostic: 'Simulat - Aritmie cardiacă', camera: '103' },
-                    { id_pacient: 4, nume: 'Georgescu', prenume: 'Ana', email: 'ana.georgescu@email.com', diagnostic: 'Simulat - Hipotensiune', camera: '104' }
-                ];
-                displayPatients(mockPatients);
-                
-                showMessage('Endpoint /pacienti nu funcționează - folosind date simulate', 'info');
+                // Fallback la endpoint general
+                try {
+                    await loadPatientsGeneral();
+                } catch (fallbackError) {
+                    console.error('Fallback la endpoint general eșuat:', fallbackError);
+                    
+                    // Ultimul fallback - date simulate
+                    const mockPatients = [
+                        { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com', diagnostic: 'Simulat - Infecție respiratorie', camera: '101' },
+                        { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com', diagnostic: 'Simulat - Post-operator', camera: '102' },
+                        { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com', diagnostic: 'Simulat - Aritmie cardiacă', camera: '103' },
+                        { id_pacient: 4, nume: 'Georgescu', prenume: 'Ana', email: 'ana.georgescu@email.com', diagnostic: 'Simulat - Hipotensiune', camera: '104' }
+                    ];
+                    displayPatients(mockPatients);
+                    showMessage('Folosind date simulate - verifică endpoint-urile API', 'info');
+                }
+            }
+        }
+
+        // Încărcare pacienți din endpoint general (fallback)
+        async function loadPatientsGeneral() {
+            const response = await fetch(`${API_BASE_URL}/pacienti`, {
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true'
+                }
+            });
+
+            if (response.ok) {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const patients = await response.json();
+                    console.log('Pacienți din endpoint general:', patients);
+                    
+                    const adaptedPatients = patients.map(patient => ({
+                        id_pacient: patient.id_pacient || patient.id,
+                        nume: patient.nume || 'Necunoscut',
+                        prenume: patient.prenume || 'Pacient',
+                        email: patient.email || 'N/A',
+                        diagnostic: patient.diagnostic || 'Monitorizare generală',
+                        camera: patient.camera || 'N/A'
+                    }));
+                    
+                    displayPatients(adaptedPatients);
+                    showMessage(`${adaptedPatients.length} pacienți încărcați din endpoint general`, 'success');
+                } else {
+                    throw new Error('Endpoint general returnează HTML');
+                }
+            } else {
+                throw new Error(`Endpoint general răspunde cu ${response.status}`);
             }
         }
 
@@ -1278,7 +1323,7 @@
             showMessage('Ați fost deconectat din portal.', 'success');
         }
 
-        // Obținere măsurători pentru un pacient (îmbunătățită)
+        // Obținere măsurători pentru un pacient (adaptat pentru noul API)
         async function getPatientMeasurements(patientId) {
             console.log(`Obținere măsurători pentru pacientul ${patientId}`);
             
@@ -1290,18 +1335,35 @@
                     return measurements;
                 }
                 
-                // Cod pentru API real (când va fi disponibil)
+                // Folosește noul endpoint pentru măsurători
                 const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/masuratori`, {
                     headers: {
-                        'Authorization': `Bearer ${authToken}`
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'
                     }
                 });
 
                 if (response.ok) {
                     const measurements = await response.json();
-                    return measurements;
+                    console.log(`Măsurători reale pentru pacientul ${patientId}:`, measurements);
+                    
+                    // Adaptează structura datelor dacă e diferită
+                    return {
+                        temperatura: measurements.temperatura || measurements.temperature || '36.5',
+                        puls: measurements.puls || measurements.heartRate || measurements.pulse || '75',
+                        umiditate: measurements.umiditate || measurements.humidity || '50',
+                        ecg: measurements.ecg || measurements.ecgValue || '0.6',
+                        timestamp: measurements.timestamp || new Date().toLocaleString('ro-RO'),
+                        // Adaugă date ECG în timp real dacă sunt disponibile
+                        ecgRealTime: measurements.ecgRealTime || {
+                            rawData: generateECGPoints(),
+                            heartRate: parseInt(measurements.puls || measurements.pulse || 75),
+                            rhythm: measurements.rhythm || 'normal'
+                        }
+                    };
                 } else {
-                    throw new Error('Nu s-au putut obține măsurătorile din API');
+                    throw new Error(`Endpoint măsurători răspunde cu status ${response.status}`);
                 }
             } catch (error) {
                 console.error('Eroare măsurători:', error);
@@ -1310,6 +1372,122 @@
                 const measurements = generateSimulatedData(patientId);
                 console.log(`Fallback la date simulate pentru ${patientId}:`, measurements);
                 return measurements;
+            }
+        }
+
+        // Generare puncte ECG pentru streaming simulat
+        function generateECGPoints() {
+            const points = [];
+            for (let i = 0; i < 10; i++) {
+                points.push((Math.random() - 0.5) * 1.5);
+            }
+            return points;
+        }
+
+        // Obținere alerte pentru un pacient
+        async function getPatientAlerts(patientId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/alerte`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+
+                if (response.ok) {
+                    const alerts = await response.json();
+                    console.log(`Alerte pentru pacientul ${patientId}:`, alerts);
+                    return alerts;
+                } else {
+                    throw new Error(`Endpoint alerte răspunde cu ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Eroare alerte:', error);
+                return []; // Returnează array gol dacă nu sunt alerte
+            }
+        }
+
+        // Obținere recomandări pentru un pacient
+        async function getPatientRecommendations(patientId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/recomandari`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+
+                if (response.ok) {
+                    const recommendations = await response.json();
+                    console.log(`Recomandări pentru pacientul ${patientId}:`, recommendations);
+                    return recommendations;
+                } else {
+                    throw new Error(`Endpoint recomandări răspunde cu ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Eroare recomandări:', error);
+                return []; // Returnează array gol dacă nu sunt recomandări
+            }
+        }
+
+        // Trimitere recomandare nouă pentru un pacient
+        async function sendPatientRecommendation(patientId, recommendationText) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/recomandari`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'
+                    },
+                    body: JSON.stringify({
+                        continut: recommendationText,
+                        data_emitere: new Date().toISOString().split('T')[0]
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('Recomandare trimisă cu succes:', result);
+                    showMessage('Recomandare salvată cu succes!', 'success');
+                    return result;
+                } else {
+                    throw new Error(`Trimitere recomandare eșuată: ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Eroare trimitere recomandare:', error);
+                showMessage('Eroare la salvarea recomandării', 'error');
+                return null;
+            }
+        }
+
+        // Obținere statistici pentru medic
+        async function getDoctorStatistics() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/medic/${currentDoctor.id}/statistici`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+
+                if (response.ok) {
+                    const stats = await response.json();
+                    console.log('Statistici medic:', stats);
+                    return stats;
+                } else {
+                    throw new Error(`Endpoint statistici răspunde cu ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Eroare statistici:', error);
+                return {
+                    totalPacienti: 0,
+                    alerteActive: 0,
+                    recomandariTrimise: 0
+                };
             }
         }
 

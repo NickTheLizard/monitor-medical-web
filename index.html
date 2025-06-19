@@ -638,7 +638,7 @@
             }, 5000);
         }
 
-        // Gestionare login pentru medici (adaptat pentru ngrok)
+        // Gestionare login pentru medici (adaptat pentru API-ul final al colegului)
         async function handleLogin(event) {
             event.preventDefault();
             
@@ -648,18 +648,34 @@
             try {
                 showMessage('Se încearcă conectarea...', 'info');
                 
-                // Folosește exact formatul pe care îl așteaptă API-ul colegului
-                const response = await fetch(`${API_BASE_URL}/login`, {
+                // Încearcă primul endpoint specific MySQL
+                let response = await fetch(`${API_BASE_URL}/mysql-login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'  // Skip ngrok warning page
+                        'ngrok-skip-browser-warning': 'true'
                     },
                     body: JSON.stringify({ 
-                        username: username,  // API-ul colegului folosește "username" 
+                        username: username,
                         password: password 
                     })
                 });
+
+                // Dacă nu merge /mysql-login, încearcă /login
+                if (!response.ok) {
+                    console.log('/mysql-login nu funcționează, încerc /login...');
+                    response = await fetch(`${API_BASE_URL}/login`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'ngrok-skip-browser-warning': 'true'
+                        },
+                        body: JSON.stringify({ 
+                            username: username,
+                            password: password 
+                        })
+                    });
+                }
 
                 console.log('Response status:', response.status);
                 
@@ -1440,7 +1456,7 @@
             }
         }
 
-        // Trimitere recomandare nouă pentru un pacient
+        // Trimitere recomandare nouă pentru un pacient (adaptat la API-ul colegului)
         async function sendPatientRecommendation(patientId, recommendationText) {
             try {
                 const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/recomandari`, {
@@ -1451,8 +1467,7 @@
                         'ngrok-skip-browser-warning': 'true'
                     },
                     body: JSON.stringify({
-                        continut: recommendationText,
-                        data_emitere: new Date().toISOString().split('T')[0]
+                        text: recommendationText  // Format adaptat la API-ul colegului
                     })
                 });
 

@@ -547,13 +547,74 @@
     </div>
 
     <script>
-        // Configurare API - se va seta dinamic
-        let API_BASE_URL = localStorage.getItem('api_base_url') || 'https://6181-74-234-34-29.ngrok-free.app';
-        let authToken = localStorage.getItem('authToken');
-        let currentDoctor = JSON.parse(localStorage.getItem('currentDoctor') || '{}');
-        let selectedPatientId = null;
-        let updateInterval = null;
-        let isApiConnected = false;
+        // 📁 API Functions - exact ca în fișierul colegului
+        const BASE_URL = "https://6181-74-234-34-29.ngrok-free.app";
+
+        // 🔐 Login utilizator în MySQL
+        async function apiLogin(username, password) {
+            const res = await fetch(`${BASE_URL}/mysql-login`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "ngrok-skip-browser-warning": "true"
+                },
+                body: JSON.stringify({ username, password }),
+            });
+            return res.json();
+        }
+
+        // 📋 Lista pacienților medicului
+        async function getPacienti(idMedic) {
+            const res = await fetch(`${BASE_URL}/medic/${idMedic}/pacienti`, {
+                headers: {
+                    "ngrok-skip-browser-warning": "true"
+                }
+            });
+            return res.json();
+        }
+
+        // 📊 Măsurători recente pentru un pacient
+        async function getMasuratori(idPacient) {
+            const res = await fetch(`${BASE_URL}/pacient/${idPacient}/masuratori`, {
+                headers: {
+                    "ngrok-skip-browser-warning": "true"
+                }
+            });
+            return res.json();
+        }
+
+        // 🚨 Alerte pentru pacient
+        async function getAlerte(idPacient) {
+            const res = await fetch(`${BASE_URL}/pacient/${idPacient}/alerte`, {
+                headers: {
+                    "ngrok-skip-browser-warning": "true"
+                }
+            });
+            return res.json();
+        }
+
+        // 💬 Recomandări existente
+        async function getRecomandari(idPacient) {
+            const res = await fetch(`${BASE_URL}/pacient/${idPacient}/recomandari`, {
+                headers: {
+                    "ngrok-skip-browser-warning": "true"
+                }
+            });
+            return res.json();
+        }
+
+        // ➕ Trimite o recomandare nouă
+        async function trimiteRecomandare(idPacient, text) {
+            const res = await fetch(`${BASE_URL}/pacient/${idPacient}/recomandari`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "ngrok-skip-browser-warning": "true"
+                },
+                body: JSON.stringify({ text }),
+            });
+            return res.json();
+        }
 
         // Variabile pentru ECG în timp real
         let ecgCanvas = null;
@@ -638,7 +699,7 @@
             }, 5000);
         }
 
-        // Gestionare login pentru medici (adaptat pentru API-ul final al colegului)
+        // Gestionare login folosind API-ul colegului
         async function handleLogin(event) {
             event.preventDefault();
             
@@ -646,70 +707,65 @@
             const password = document.getElementById('login-password').value;
 
             try {
-                showMessage('Se încearcă conectarea...', 'info');
+                showMessage('Se încearcă conectarea cu API-ul colegului...', 'info');
                 
-                // Încearcă primul endpoint specific MySQL
-                let response = await fetch(`${API_BASE_URL}/mysql-login`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'
-                    },
-                    body: JSON.stringify({ 
-                        username: username,
-                        password: password 
-                    })
-                });
-
-                // Dacă nu merge /mysql-login, încearcă /login
-                if (!response.ok) {
-                    console.log('/mysql-login nu funcționează, încerc /login...');
-                    response = await fetch(`${API_BASE_URL}/login`, {
+                // Folosește funcția API exactă a colegului
+                const data = await apiLogin(username, password);
+                console.log('Login response:', data);
+                
+                if (data.token) {
+                    authToken = data.token;
+                    currentDoctor = {
+                        id: data.user?.id || data.user?._id || 1,
+                        nume: `Dr. ${data.user?.username || username}`,
+                        email: data.user?.email || `${username}@spital.ro`,
+                        username: data.user?.username || username
+                    };
+                    
+                    localStorage.setItem('authToken', authToken);
+                    localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
+                    
+                    showMessage('Autentificare reușită cu API-ul colegului!', 'success');
+                    showDashboard();
+                } else if (data.message) {
+                    showMessage(`Eroare: ${data.message}`, 'error');
+                } else {
+                    showMessage('API-ul nu a returnat token-ul de autentificare', 'error');
+                }
+            } catch (error) {
+                console.error('Eroare login cu API coleg:', error);
+                
+                // Fallback la sistemul anterior
+                try {
+                    showMessage('Fallback la sistemul anterior...', 'info');
+                    const response = await fetch(`${API_BASE_URL}/login`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'ngrok-skip-browser-warning': 'true'
                         },
-                        body: JSON.stringify({ 
-                            username: username,
-                            password: password 
-                        })
+                        body: JSON.stringify({ username, password })
                     });
-                }
 
-                console.log('Response status:', response.status);
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('Login response:', data);
-                    
-                    if (data.token) {
-                        authToken = data.token;
-                        
-                        // Obține profilul utilizatorului
-                        await getUserProfile();
-                        
-                        localStorage.setItem('authToken', authToken);
-                        localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
-                        
-                        showMessage('Autentificare reușită! Conectat la API-ul real.', 'success');
-                        showDashboard();
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.token) {
+                            authToken = data.token;
+                            await getUserProfile();
+                            
+                            localStorage.setItem('authToken', authToken);
+                            localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
+                            
+                            showMessage('Autentificare reușită cu fallback!', 'success');
+                            showDashboard();
+                        }
                     } else {
-                        showMessage('API-ul nu a returnat token-ul de autentificare', 'error');
+                        throw new Error('Fallback login failed');
                     }
-                } else {
-                    const errorText = await response.text();
-                    console.error('Login error:', errorText);
-                    
-                    if (response.status === 401) {
-                        showMessage('Username sau parolă incorectă. Verifică: doctor1 / Test1234!', 'error');
-                    } else {
-                        showMessage(`Eroare API: ${errorText}`, 'error');
-                    }
+                } catch (fallbackError) {
+                    showMessage('Eroare de conexiune. Folosește butonul DEMO pentru prezentare.', 'error');
+                    console.error('Eroare fallback:', fallbackError);
                 }
-            } catch (error) {
-                console.error('Eroare conexiune:', error);
-                showMessage('Eroare de conexiune la API. Verifică dacă serverul colegului rulează.', 'error');
             }
         }
 
@@ -1347,47 +1403,39 @@
             showMessage('Ați fost deconectat din portal.', 'success');
         }
 
-        // Obținere măsurători pentru un pacient (adaptat pentru noul API)
+        // Obținere măsurători folosind API-ul colegului
         async function getPatientMeasurements(patientId) {
             console.log(`Obținere măsurători pentru pacientul ${patientId}`);
             
             try {
                 // În mod demo, returnează întotdeauna date simulate
-                if (authToken === 'demo_token_123' || true) {
+                if (authToken === 'demo_token_123') {
                     const measurements = generateSimulatedData(patientId);
                     console.log(`Date simulate generate pentru ${patientId}:`, measurements);
                     return measurements;
                 }
                 
-                // Folosește noul endpoint pentru măsurători
-                const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/masuratori`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-
-                if (response.ok) {
-                    const measurements = await response.json();
-                    console.log(`Măsurători reale pentru pacientul ${patientId}:`, measurements);
+                // Folosește funcția API exactă a colegului
+                try {
+                    const measurements = await getMasuratori(patientId);
+                    console.log(`Măsurători din API-ul colegului pentru pacientul ${patientId}:`, measurements);
                     
-                    // Adaptează structura datelor dacă e diferită
+                    // Adaptează formatul dacă e necesar
                     return {
                         temperatura: measurements.temperatura || measurements.temperature || '36.5',
                         puls: measurements.puls || measurements.heartRate || measurements.pulse || '75',
                         umiditate: measurements.umiditate || measurements.humidity || '50',
                         ecg: measurements.ecg || measurements.ecgValue || '0.6',
                         timestamp: measurements.timestamp || new Date().toLocaleString('ro-RO'),
-                        // Adaugă date ECG în timp real dacă sunt disponibile
                         ecgRealTime: measurements.ecgRealTime || {
                             rawData: generateECGPoints(),
                             heartRate: parseInt(measurements.puls || measurements.pulse || 75),
                             rhythm: measurements.rhythm || 'normal'
                         }
                     };
-                } else {
-                    throw new Error(`Endpoint măsurători răspunde cu status ${response.status}`);
+                } catch (apiError) {
+                    console.log('API măsurători nu funcționează, folosesc date simulate');
+                    throw apiError;
                 }
             } catch (error) {
                 console.error('Eroare măsurători:', error);
@@ -1397,6 +1445,25 @@
                 console.log(`Fallback la date simulate pentru ${patientId}:`, measurements);
                 return measurements;
             }
+        }
+
+        // Pornește monitorizarea automată
+        function startMonitoring() {
+            console.log('Pornire monitorizare...');
+            
+            // Oprește intervalul anterior dacă există
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+            
+            // Prima actualizare imediată
+            updatePatientsStatus();
+            
+            // Actualizare la fiecare 3 secunde (mai rapid pentru demo)
+            updateInterval = setInterval(() => {
+                console.log('Actualizare automată...');
+                updatePatientsStatus();
+            }, 3000);
         }
 
         // Generare puncte ECG pentru streaming simulat
@@ -1711,24 +1778,13 @@
             }, 1000);
         }
 
-        // Pornește monitorizarea automată
-        function startMonitoring() {
-            console.log('Pornire monitorizare...');
-            
-            // Oprește intervalul anterior dacă există
-            if (updateInterval) {
-                clearInterval(updateInterval);
-            }
-            
-            // Prima actualizare imediată
-            updatePatientsStatus();
-            
-            // Actualizare la fiecare 3 secunde (mai rapid pentru demo)
-            updateInterval = setInterval(() => {
-                console.log('Actualizare automată...');
-                updatePatientsStatus();
-            }, 3000);
-        }
+        // Configurare globală
+        let API_BASE_URL = BASE_URL;
+        let authToken = localStorage.getItem('authToken');
+        let currentDoctor = JSON.parse(localStorage.getItem('currentDoctor') || '{}');
+        let selectedPatientId = null;
+        let updateInterval = null;
+        let isApiConnected = false;
 
         // Actualizare statusuri pacienți (îmbunătățită)
         async function updatePatientsStatus() {

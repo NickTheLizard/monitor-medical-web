@@ -302,7 +302,7 @@
         }
 
         .ecg-item {
-            grid-column: span 2; /* ECG ocupă 2 coloane */
+            grid-column: span 2;
             text-align: left;
         }
 
@@ -547,12 +547,28 @@
     </div>
 
     <script>
-        // 📁 API Functions - adaptat cu autentificare JWT
+        // 🚀 CONFIGURARE GLOBALĂ - Mutată la început!
         const BASE_URL = "https://6181-74-234-34-29.ngrok-free.app";
+        let API_BASE_URL = localStorage.getItem('api_base_url') || BASE_URL;
+        let authToken = localStorage.getItem('authToken');
+        let currentDoctor = JSON.parse(localStorage.getItem('currentDoctor') || '{}');
+        let selectedPatientId = null;
+        let updateInterval = null;
+        let isApiConnected = false;
 
-        // 🔐 Login utilizator în MySQL
+        // Variabile pentru ECG în timp real
+        let ecgCanvas = null;
+        let ecgCtx = null;
+        let ecgDataBuffer = [];
+        let ecgAnimation = null;
+        let ecgTime = 0;
+        let maxECGBufferSize = 500;
+        let ecgSampleRate = 100;
+        let isReceivingRealECG = false;
+
+        // 📁 API Functions - adaptat cu autentificare JWT
         async function apiLogin(username, password) {
-            const res = await fetch(`${BASE_URL}/mysql-login`, {
+            const res = await fetch(`${API_BASE_URL}/mysql-login`, {
                 method: "POST",
                 headers: { 
                     "Content-Type": "application/json",
@@ -563,9 +579,8 @@
             return res.json();
         }
 
-        // 📋 Lista pacienților medicului (cu autentificare)
         async function getPacienti(idMedic) {
-            const res = await fetch(`${BASE_URL}/medic/${idMedic}/pacienti`, {
+            const res = await fetch(`${API_BASE_URL}/medic/${idMedic}/pacienti`, {
                 headers: {
                     "Authorization": `Bearer ${authToken}`,
                     "Content-Type": "application/json",
@@ -575,9 +590,8 @@
             return res.json();
         }
 
-        // 📊 Măsurători recente pentru un pacient (cu autentificare)
         async function getMasuratori(idPacient) {
-            const res = await fetch(`${BASE_URL}/pacient/${idPacient}/masuratori`, {
+            const res = await fetch(`${API_BASE_URL}/pacient/${idPacient}/masuratori`, {
                 headers: {
                     "Authorization": `Bearer ${authToken}`,
                     "Content-Type": "application/json",
@@ -587,9 +601,8 @@
             return res.json();
         }
 
-        // 🚨 Alerte pentru pacient (cu autentificare)
         async function getAlerte(idPacient) {
-            const res = await fetch(`${BASE_URL}/pacient/${idPacient}/alerte`, {
+            const res = await fetch(`${API_BASE_URL}/pacient/${idPacient}/alerte`, {
                 headers: {
                     "Authorization": `Bearer ${authToken}`,
                     "Content-Type": "application/json",
@@ -599,9 +612,8 @@
             return res.json();
         }
 
-        // 💬 Recomandări existente (cu autentificare)
         async function getRecomandari(idPacient) {
-            const res = await fetch(`${BASE_URL}/pacient/${idPacient}/recomandari`, {
+            const res = await fetch(`${API_BASE_URL}/pacient/${idPacient}/recomandari`, {
                 headers: {
                     "Authorization": `Bearer ${authToken}`,
                     "Content-Type": "application/json",
@@ -611,9 +623,8 @@
             return res.json();
         }
 
-        // ➕ Trimite o recomandare nouă (cu autentificare)
         async function trimiteRecomandare(idPacient, text) {
-            const res = await fetch(`${BASE_URL}/pacient/${idPacient}/recomandari`, {
+            const res = await fetch(`${API_BASE_URL}/pacient/${idPacient}/recomandari`, {
                 method: "POST",
                 headers: { 
                     "Authorization": `Bearer ${authToken}`,
@@ -625,26 +636,6 @@
             return res.json();
         }
 
-        // Variabile pentru ECG în timp real
-        let ecgCanvas = null;
-        let ecgCtx = null;
-        let ecgDataBuffer = []; // Buffer pentru punctele ECG primite
-        let ecgAnimation = null;
-        let ecgTime = 0;
-        let maxECGBufferSize = 500; // Păstrăm ultimele 500 de puncte (5 secunde la 100Hz)
-        let ecgSampleRate = 100; // Hz - câte puncte pe secundă primim de la Arduino
-        let isReceivingRealECG = false; // Flag pentru date reale vs simulate
-
-        // Inițializare când se încarcă aplicația
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('api-url').value = API_BASE_URL;
-            testApiConnection();
-            
-            if (authToken) {
-                showDashboard();
-            }
-        });
-
         // Salvare configurare API
         function saveApiConfig() {
             const apiUrl = document.getElementById('api-url').value.trim();
@@ -653,7 +644,6 @@
                 return;
             }
             
-            // Elimină slash-ul final dacă există
             API_BASE_URL = apiUrl.replace(/\/$/, '');
             localStorage.setItem('api_base_url', API_BASE_URL);
             
@@ -661,24 +651,22 @@
             testApiConnection();
         }
 
-        // Test conexiune API (adaptat pentru endpoint-urile colegului)
+        // Test conexiune API
         async function testApiConnection() {
             const statusElement = document.getElementById('connection-status');
             statusElement.textContent = '🔄 Testare conexiune...';
             statusElement.className = 'connection-status';
             
             try {
-                // Testează direct endpoint-ul /login pentru a vedea dacă API-ul răspunde
                 const response = await fetch(`${API_BASE_URL}/login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ username: 'test', password: 'test' }),
-                    signal: AbortSignal.timeout(5000) // timeout 5 secunde
+                    signal: AbortSignal.timeout(5000)
                 });
                 
-                // Dacă primim răspuns (chiar dacă e eroare de autentificare), API-ul funcționează
                 if (response.status === 400 || response.status === 401 || response.ok) {
                     isApiConnected = true;
                     statusElement.textContent = '✅ API conectat';
@@ -708,7 +696,7 @@
             }, 5000);
         }
 
-        // Gestionare login folosind API-ul colegului
+        // Gestionare login
         async function handleLogin(event) {
             event.preventDefault();
             
@@ -718,7 +706,6 @@
             try {
                 showMessage('Se încearcă conectarea cu API-ul colegului...', 'info');
                 
-                // Folosește funcția API exactă a colegului
                 const data = await apiLogin(username, password);
                 console.log('Login response:', data);
                 
@@ -743,42 +730,11 @@
                 }
             } catch (error) {
                 console.error('Eroare login cu API coleg:', error);
-                
-                // Fallback la sistemul anterior
-                try {
-                    showMessage('Fallback la sistemul anterior...', 'info');
-                    const response = await fetch(`${API_BASE_URL}/login`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'ngrok-skip-browser-warning': 'true'
-                        },
-                        body: JSON.stringify({ username, password })
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.token) {
-                            authToken = data.token;
-                            await getUserProfile();
-                            
-                            localStorage.setItem('authToken', authToken);
-                            localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
-                            
-                            showMessage('Autentificare reușită cu fallback!', 'success');
-                            showDashboard();
-                        }
-                    } else {
-                        throw new Error('Fallback login failed');
-                    }
-                } catch (fallbackError) {
-                    showMessage('Eroare de conexiune. Folosește butonul DEMO pentru prezentare.', 'error');
-                    console.error('Eroare fallback:', fallbackError);
-                }
+                showMessage('Eroare de conexiune. Folosește butonul DEMO pentru prezentare.', 'error');
             }
         }
 
-        // Obține profilul utilizatorului după login (adaptat pentru ngrok)
+        // Obține profilul utilizatorului după login
         async function getUserProfile() {
             try {
                 const response = await fetch(`${API_BASE_URL}/profile`, {
@@ -786,7 +742,7 @@
                     headers: {
                         'Authorization': `Bearer ${authToken}`,
                         'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'  // Skip ngrok warning page
+                        'ngrok-skip-browser-warning': 'true'
                     }
                 });
 
@@ -802,40 +758,24 @@
                             email: profileData.email || `${profileData.username}@spital.ro`,
                             username: profileData.username
                         };
-                    } else {
-                        throw new Error('Profile endpoint returnează HTML în loc de JSON');
                     }
-                } else {
-                    throw new Error(`Profile endpoint răspunde cu status ${response.status}`);
                 }
             } catch (error) {
                 console.log('Profile endpoint nu funcționează, folosesc date de bază:', error.message);
-                currentDoctor = {
-                    id: 1,
-                    nume: `Dr. ${document.getElementById('login-email').value}`,
-                    email: `${document.getElementById('login-email').value}@spital.ro`,
-                    username: document.getElementById('login-email').value
-                };
             }
         }
 
-        // Afișare dashboard pentru medici
+        // Afișare dashboard
         async function showDashboard() {
             document.getElementById('auth-section').style.display = 'none';
             document.getElementById('config-section').style.display = 'none';
             document.getElementById('dashboard').classList.add('active');
             
-            // Actualizează informațiile medicului
             document.getElementById('doctor-name').textContent = currentDoctor.nume || currentDoctor.username || 'Doctor';
             document.getElementById('doctor-email').textContent = currentDoctor.email || 'doctor@spital.ro';
             
-            // Încarcă lista pacienților
             await loadPatients();
-            
-            // Inițializează ECG canvas
             initializeECG();
-            
-            // Pornește actualizarea automată
             startMonitoring();
         }
 
@@ -846,29 +786,23 @@
             
             ecgCtx = ecgCanvas.getContext('2d');
             
-            // Setează dimensiunile canvas-ului
             const rect = ecgCanvas.getBoundingClientRect();
-            ecgCanvas.width = rect.width * 2; // Pentru claritate pe ecrane HD
+            ecgCanvas.width = rect.width * 2;
             ecgCanvas.height = rect.height * 2;
             ecgCtx.scale(2, 2);
             
-            // Pornește animația ECG
             startECGAnimation();
         }
 
-        // Procesare date ECG în timp real de la cloud
+        // Procesare date ECG în timp real
         function processRealTimeECG(ecgDataFromCloud) {
             try {
-                // Verifică tipul datelor primite
                 if (Array.isArray(ecgDataFromCloud)) {
-                    // Cazul 1: Array cu puncte ECG raw de la Arduino
                     addECGPointsToBuffer(ecgDataFromCloud);
                 } else if (ecgDataFromCloud.rawData) {
-                    // Cazul 2: Obiect cu date procesate + puncte raw
                     addECGPointsToBuffer(ecgDataFromCloud.rawData);
                     updateECGMetrics(ecgDataFromCloud);
                 } else if (typeof ecgDataFromCloud === 'number') {
-                    // Cazul 3: Un singur punct ECG
                     addECGPointsToBuffer([ecgDataFromCloud]);
                 }
                 
@@ -880,18 +814,14 @@
             }
         }
 
-        // Adaugă puncte ECG în buffer
         function addECGPointsToBuffer(newPoints) {
-            // Adaugă punctele noi la sfârșitul buffer-ului
             ecgDataBuffer.push(...newPoints);
             
-            // Păstrează doar ultimele puncte (sliding window)
             if (ecgDataBuffer.length > maxECGBufferSize) {
                 ecgDataBuffer = ecgDataBuffer.slice(-maxECGBufferSize);
             }
         }
 
-        // Actualizează metrici ECG (BPM, ritm)
         function updateECGMetrics(ecgData) {
             if (ecgData.heartRate) {
                 document.getElementById('ecg-bpm').textContent = `${ecgData.heartRate} BPM`;
@@ -904,7 +834,6 @@
             }
         }
 
-        // Convertește codul ritmului în text
         function getECGRhythmText(rhythm) {
             const rhythms = {
                 'normal': 'Ritm sinusal normal',
@@ -917,7 +846,6 @@
             return rhythms[rhythm] || 'Ritm necunoscut';
         }
 
-        // Culoarea pentru tipul de ritm
         function getECGRhythmColor(rhythm) {
             const colors = {
                 'normal': '#00ff00',
@@ -930,7 +858,7 @@
             return colors[rhythm] || '#ffffff';
         }
 
-        // Animație ECG în timp real (adaptată pentru date reale)
+        // Animație ECG în timp real
         function startECGAnimation() {
             const canvas = ecgCanvas;
             const ctx = ecgCtx;
@@ -941,21 +869,17 @@
             const centerY = height / 2;
             
             function animate() {
-                // Curăță canvas-ul
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, width, height);
                 
-                // Desenează grila ECG
                 drawECGGrid(ctx, width, height);
                 
                 let hasAnomaly = false;
                 
                 if (isReceivingRealECG && ecgDataBuffer.length > 0) {
-                    // MODUL REAL: Desenează date reale de la Arduino
                     drawRealECGData(ctx, width, height, centerY);
                     hasAnomaly = detectECGAnomalies();
                 } else {
-                    // MODUL SIMULAT: Generează undă matematică
                     drawSimulatedECGData(ctx, width, height, centerY);
                     hasAnomaly = isECGAnomalous();
                 }
@@ -966,17 +890,14 @@
             animate();
         }
 
-        // Desenează date ECG reale de la Arduino
         function drawRealECGData(ctx, width, height, centerY) {
             if (ecgDataBuffer.length < 2) return;
             
-            // Detectează anomalii pentru culoare
             const hasAnomaly = detectECGAnomalies();
             ctx.strokeStyle = hasAnomaly ? '#ff4444' : '#00ff00';
             ctx.lineWidth = 2;
             ctx.beginPath();
             
-            // Desenează ultimele puncte din buffer
             const pointsToShow = Math.min(ecgDataBuffer.length, width);
             const startIndex = Math.max(0, ecgDataBuffer.length - pointsToShow);
             
@@ -984,7 +905,6 @@
                 const dataIndex = startIndex + i;
                 const amplitude = ecgDataBuffer[dataIndex];
                 
-                // Normalizează amplitudinea (presupunem valori între -2 și +2)
                 const normalizedAmplitude = Math.max(-1, Math.min(1, amplitude / 2));
                 
                 const x = (i / pointsToShow) * width;
@@ -999,17 +919,15 @@
             
             ctx.stroke();
             
-            // Efect de "sweep" - linie verticală care se mișcă
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            const sweepX = (Date.now() / 50) % width; // Se mișcă de la stânga la dreapta
+            const sweepX = (Date.now() / 50) % width;
             ctx.moveTo(sweepX, 0);
             ctx.lineTo(sweepX, height);
             ctx.stroke();
         }
 
-        // Desenează date ECG simulate (pentru demo)
         function drawSimulatedECGData(ctx, width, height, centerY) {
             const currentTime = Date.now() / 1000;
             const heartRate = getCurrentHeartRate();
@@ -1041,26 +959,20 @@
             ctx.stroke();
         }
 
-        // Detectează anomalii în datele ECG reale
         function detectECGAnomalies() {
-            if (ecgDataBuffer.length < 100) return false; // Trebuie date suficiente
+            if (ecgDataBuffer.length < 100) return false;
             
-            // Verifică ultimele 100 de puncte pentru anomalii
             const recentData = ecgDataBuffer.slice(-100);
             
-            // Calculează variația standard
             const mean = recentData.reduce((a, b) => a + b, 0) / recentData.length;
             const variance = recentData.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / recentData.length;
             const stdDev = Math.sqrt(variance);
             
-            // Detectează valori extreme (posibile aritmii)
             const extremeValues = recentData.filter(val => Math.abs(val - mean) > 3 * stdDev);
             
-            // Dacă >5% din puncte sunt extreme, e posibilă aritmie
             return extremeValues.length > recentData.length * 0.05;
         }
 
-        // Generare undă ECG realistă (pentru modul simulat)
         function generateECGWave(time, heartRate = 75, anomaly = false) {
             const beatInterval = 60 / heartRate;
             const beatPhase = (time % beatInterval) / beatInterval;
@@ -1097,12 +1009,10 @@
             return amplitude;
         }
 
-        // Desenează grila ECG ca pe monitoarele medicale
         function drawECGGrid(ctx, width, height) {
             ctx.strokeStyle = '#004400';
             ctx.lineWidth = 0.5;
             
-            // Linii verticale (timpul)
             const verticalSpacing = width / 30;
             for (let x = 0; x < width; x += verticalSpacing) {
                 ctx.beginPath();
@@ -1111,7 +1021,6 @@
                 ctx.stroke();
             }
             
-            // Linii orizontale (amplitudinea)
             const horizontalSpacing = height / 10;
             for (let y = 0; y < height; y += horizontalSpacing) {
                 ctx.beginPath();
@@ -1120,7 +1029,6 @@
                 ctx.stroke();
             }
             
-            // Linia centrală mai groasă
             ctx.strokeStyle = '#006600';
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -1129,7 +1037,6 @@
             ctx.stroke();
         }
 
-        // Obține frecvența cardiacă curentă
         function getCurrentHeartRate() {
             if (selectedPatientId) {
                 const pulseElement = document.getElementById('pulse-value');
@@ -1140,7 +1047,6 @@
             return 75;
         }
 
-        // Verifică dacă ECG-ul are anomalii
         function isECGAnomalous() {
             if (selectedPatientId) {
                 const statusElement = document.getElementById('ecg-status');
@@ -1149,7 +1055,6 @@
             return false;
         }
 
-        // Actualizează informațiile ECG
         function updateECGInfo(heartRate, hasAnomaly) {
             const bpmElement = document.getElementById('ecg-bpm');
             const rhythmElement = document.getElementById('ecg-rhythm');
@@ -1175,10 +1080,9 @@
             }
         }
 
-        // Încărcare lista pacienților din API
+        // Încărcare lista pacienților
         async function loadPatients() {
             try {
-                // Dacă e mod demo, folosește date simulate
                 if (authToken === 'demo_token_123') {
                     const mockPatients = [
                         { 
@@ -1218,7 +1122,6 @@
                     return;
                 }
 
-                // Folosește noul endpoint specific pentru medicul curent
                 console.log(`Încărcare pacienți pentru medicul ID: ${currentDoctor.id}`);
                 
                 const response = await fetch(`${API_BASE_URL}/medic/${currentDoctor.id}/pacienti`, {
@@ -1237,16 +1140,13 @@
                         const patients = await response.json();
                         console.log('Pacienți primiti din API pentru medic:', patients);
                         
-                        // Adaptează structura pacienților (compatibil cu tabelele SQL)
                         const adaptedPatients = patients.map(patient => ({
                             id_pacient: patient.id_pacient || patient.id,
                             nume: patient.nume || 'Necunoscut',
                             prenume: patient.prenume || 'Pacient',
                             email: patient.email || 'N/A',
-                            // Generează camera și diagnostic dacă lipsesc din tabela SQL
                             camera: patient.camera || `Camera ${(patient.id_pacient || 100) + 100}`,
                             diagnostic: patient.diagnostic || 'Monitorizare generală',
-                            // Adaugă informații suplimentare dacă sunt disponibile
                             data_nasterii: patient.data_nasterii,
                             telefon: patient.telefon
                         }));
@@ -1257,7 +1157,6 @@
                         throw new Error('API /medic/pacienti returnează HTML în loc de JSON');
                     }
                 } else if (response.status === 404) {
-                    // Dacă nu există endpoint specific pentru medic, încearcă endpoint-ul general
                     console.log('Endpoint /medic/:id/pacienti nu există, încerc /pacienti...');
                     await loadPatientsGeneral();
                 } else {
@@ -1266,13 +1165,11 @@
             } catch (error) {
                 console.error('Eroare la încărcarea pacienților din API:', error);
                 
-                // Fallback la endpoint general
                 try {
                     await loadPatientsGeneral();
                 } catch (fallbackError) {
                     console.error('Fallback la endpoint general eșuat:', fallbackError);
                     
-                    // Ultimul fallback - date simulate
                     const mockPatients = [
                         { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com', diagnostic: 'Simulat - Infecție respiratorie', camera: '101' },
                         { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com', diagnostic: 'Simulat - Post-operator', camera: '102' },
@@ -1285,7 +1182,6 @@
             }
         }
 
-        // Încărcare pacienți din endpoint general (fallback)
         async function loadPatientsGeneral() {
             const response = await fetch(`${API_BASE_URL}/pacienti`, {
                 headers: {
@@ -1306,10 +1202,8 @@
                         nume: patient.nume || 'Necunoscut',
                         prenume: patient.prenume || 'Pacient',
                         email: patient.email || 'N/A',
-                        // Generează camera și diagnostic dacă lipsesc din tabela SQL
                         camera: patient.camera || `Camera ${(patient.id_pacient || 100) + 100}`,
                         diagnostic: patient.diagnostic || 'Monitorizare generală',
-                        // Adaugă informații suplimentare dacă sunt disponibile
                         data_nasterii: patient.data_nasterii,
                         telefon: patient.telefon
                     }));
@@ -1324,7 +1218,6 @@
             }
         }
 
-        // Afișare lista pacienților în interfață
         function displayPatients(patients) {
             const container = document.getElementById('patients-container');
             
@@ -1365,28 +1258,23 @@
             });
         }
 
-        // Selectare pacient (îmbunătățită)
         function selectPatient(patientId, patientName) {
             console.log(`Selectare pacient: ${patientId} - ${patientName}`);
             
-            // Elimină selecția anterioară
             document.querySelectorAll('.patient-item').forEach(item => {
                 item.classList.remove('selected');
             });
             
-            // Selectează pacientul curent
             event.target.closest('.patient-item').classList.add('selected');
             
             selectedPatientId = patientId;
             document.getElementById('selected-patient-name').textContent = patientName;
             document.getElementById('patient-values').classList.add('active');
             
-            // Actualizează imediat măsurătorile pentru pacientul selectat
             setTimeout(async () => {
                 const measurements = await getPatientMeasurements(patientId);
                 updateSelectedPatientValues(measurements);
                 
-                // Reinițializează ECG pentru noul pacient
                 if (ecgAnimation) {
                     cancelAnimationFrame(ecgAnimation);
                 }
@@ -1394,7 +1282,6 @@
             }, 100);
         }
 
-        // Deconectare
         function logout() {
             localStorage.removeItem('authToken');
             localStorage.removeItem('currentDoctor');
@@ -1412,24 +1299,20 @@
             showMessage('Ați fost deconectat din portal.', 'success');
         }
 
-        // Obținere măsurători folosind API-ul colegului
         async function getPatientMeasurements(patientId) {
             console.log(`Obținere măsurători pentru pacientul ${patientId}`);
             
             try {
-                // În mod demo, returnează întotdeauna date simulate
                 if (authToken === 'demo_token_123') {
                     const measurements = generateSimulatedData(patientId);
                     console.log(`Date simulate generate pentru ${patientId}:`, measurements);
                     return measurements;
                 }
                 
-                // Folosește funcția API exactă a colegului
                 try {
                     const measurements = await getMasuratori(patientId);
                     console.log(`Măsurători din API-ul colegului pentru pacientul ${patientId}:`, measurements);
                     
-                    // Adaptează formatul dacă e necesar
                     return {
                         temperatura: measurements.temperatura || measurements.temperature || '36.5',
                         puls: measurements.puls || measurements.heartRate || measurements.pulse || '75',
@@ -1449,33 +1332,27 @@
             } catch (error) {
                 console.error('Eroare măsurători:', error);
                 
-                // Fallback la date simulate
                 const measurements = generateSimulatedData(patientId);
                 console.log(`Fallback la date simulate pentru ${patientId}:`, measurements);
                 return measurements;
             }
         }
 
-        // Pornește monitorizarea automată
         function startMonitoring() {
             console.log('Pornire monitorizare...');
             
-            // Oprește intervalul anterior dacă există
             if (updateInterval) {
                 clearInterval(updateInterval);
             }
             
-            // Prima actualizare imediată
             updatePatientsStatus();
             
-            // Actualizare la fiecare 3 secunde (mai rapid pentru demo)
             updateInterval = setInterval(() => {
                 console.log('Actualizare automată...');
                 updatePatientsStatus();
             }, 3000);
         }
 
-        // Generare puncte ECG pentru streaming simulat
         function generateECGPoints() {
             const points = [];
             for (let i = 0; i < 10; i++) {
@@ -1484,116 +1361,9 @@
             return points;
         }
 
-        // Obținere alerte pentru un pacient
-        async function getPatientAlerts(patientId) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/alerte`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-
-                if (response.ok) {
-                    const alerts = await response.json();
-                    console.log(`Alerte pentru pacientul ${patientId}:`, alerts);
-                    return alerts;
-                } else {
-                    throw new Error(`Endpoint alerte răspunde cu ${response.status}`);
-                }
-            } catch (error) {
-                console.error('Eroare alerte:', error);
-                return []; // Returnează array gol dacă nu sunt alerte
-            }
-        }
-
-        // Obținere recomandări pentru un pacient
-        async function getPatientRecommendations(patientId) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/recomandari`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-
-                if (response.ok) {
-                    const recommendations = await response.json();
-                    console.log(`Recomandări pentru pacientul ${patientId}:`, recommendations);
-                    return recommendations;
-                } else {
-                    throw new Error(`Endpoint recomandări răspunde cu ${response.status}`);
-                }
-            } catch (error) {
-                console.error('Eroare recomandări:', error);
-                return []; // Returnează array gol dacă nu sunt recomandări
-            }
-        }
-
-        // Trimitere recomandare nouă pentru un pacient (adaptat la API-ul colegului)
-        async function sendPatientRecommendation(patientId, recommendationText) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/pacient/${patientId}/recomandari`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'
-                    },
-                    body: JSON.stringify({
-                        text: recommendationText  // Format adaptat la API-ul colegului
-                    })
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    console.log('Recomandare trimisă cu succes:', result);
-                    showMessage('Recomandare salvată cu succes!', 'success');
-                    return result;
-                } else {
-                    throw new Error(`Trimitere recomandare eșuată: ${response.status}`);
-                }
-            } catch (error) {
-                console.error('Eroare trimitere recomandare:', error);
-                showMessage('Eroare la salvarea recomandării', 'error');
-                return null;
-            }
-        }
-
-        // Obținere statistici pentru medic
-        async function getDoctorStatistics() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/medic/${currentDoctor.id}/statistici`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`,
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-
-                if (response.ok) {
-                    const stats = await response.json();
-                    console.log('Statistici medic:', stats);
-                    return stats;
-                } else {
-                    throw new Error(`Endpoint statistici răspunde cu ${response.status}`);
-                }
-            } catch (error) {
-                console.error('Eroare statistici:', error);
-                return {
-                    totalPacienti: 0,
-                    alerteActive: 0,
-                    recomandariTrimise: 0
-                };
-            }
-        }
-
-        // Generare date simulate pentru demonstrație (cu puncte ECG reale)
         function generateSimulatedData(patientId) {
             const patientProfiles = {
-                1: { // Ion Popescu - Pacient cu febră și tahicardie
+                1: {
                     name: "Ion Popescu",
                     condition: "Infecție respiratorie",
                     temp: { base: 38.2, variation: 0.4 },
@@ -1601,7 +1371,7 @@
                     umiditate: { base: 45, variation: 5 },
                     ecg: { base: 0.7, variation: 0.2, anomaly: false }
                 },
-                2: { // Maria Ionescu - Pacient stabil, post-operator
+                2: {
                     name: "Maria Ionescu", 
                     condition: "Recuperare post-operatorie",
                     temp: { base: 36.4, variation: 0.2 },
@@ -1609,38 +1379,35 @@
                     umiditate: { base: 50, variation: 3 },
                     ecg: { base: 0.5, variation: 0.1, anomaly: false }
                 },
-                3: { // Gheorghe Dumitrescu - Pacient cu aritmie cardiacă
+                3: {
                     name: "Gheorghe Dumitrescu",
                     condition: "Fibrilație atrială",
                     temp: { base: 36.8, variation: 0.3 },
-                    puls: { base: 95, variation: 25 }, // Puls irregular
+                    puls: { base: 95, variation: 25 },
                     umiditate: { base: 48, variation: 4 },
-                    ecg: { base: 0.9, variation: 0.4, anomaly: true } // Aritmie
+                    ecg: { base: 0.9, variation: 0.4, anomaly: true }
                 },
-                4: { // Ana Georgescu - Pacient cu hipotensiune și bradicardie
+                4: {
                     name: "Ana Georgescu",
                     condition: "Hipotensiune arterială", 
                     temp: { base: 36.1, variation: 0.2 },
-                    puls: { base: 55, variation: 8 }, // Bradicardie
+                    puls: { base: 55, variation: 8 },
                     umiditate: { base: 52, variation: 3 },
                     ecg: { base: 0.4, variation: 0.1, anomaly: false }
                 }
             };
 
-            const profile = patientProfiles[patientId] || patientProfiles[2]; // Default la pacient stabil
+            const profile = patientProfiles[patientId] || patientProfiles[2];
             
-            // Generare valori cu variații realiste
             const temp = profile.temp.base + (Math.random() - 0.5) * profile.temp.variation;
             const puls = Math.round(profile.puls.base + (Math.random() - 0.5) * profile.puls.variation);
             const umiditate = profile.umiditate.base + (Math.random() - 0.5) * profile.umiditate.variation;
             const ecg = Math.max(0.1, profile.ecg.base + (Math.random() - 0.5) * profile.ecg.variation);
             
-            // Simulare deteriorare/îmbunătățire în timp
-            const timeVariation = Math.sin(Date.now() / 30000) * 0.1; // Ciclu de 1 minut
+            const timeVariation = Math.sin(Date.now() / 30000) * 0.1;
             
-            // Generare puncte ECG simulate (pentru demonstrația streaming-ului)
             const ecgPoints = [];
-            for (let i = 0; i < 10; i++) { // 10 puncte noi la fiecare update
+            for (let i = 0; i < 10; i++) {
                 const point = ecg + (Math.random() - 0.5) * 0.3;
                 ecgPoints.push(point);
             }
@@ -1656,16 +1423,14 @@
                     condition: profile.condition,
                     hasAnomaly: profile.ecg.anomaly
                 },
-                // NOUA FUNCȚIONALITATE: Puncte ECG pentru streaming
                 ecgRealTime: {
-                    rawData: ecgPoints, // Array cu puncte ECG
+                    rawData: ecgPoints,
                     heartRate: Math.round(puls + timeVariation * 5),
                     rhythm: profile.ecg.anomaly ? 'arrhythmia' : 'normal',
-                    sampleRate: 100 // Hz
+                    sampleRate: 100
                 }
             };
             
-            // Simulează primirea datelor ECG în timp real
             if (selectedPatientId == patientId) {
                 processRealTimeECG(result.ecgRealTime);
             }
@@ -1673,129 +1438,6 @@
             return result;
         }
 
-        // Actualizare statusuri pacienți
-        async function updatePatientsStatus() {
-            if (!isApiConnected) return;
-            
-            try {
-                const patientElements = document.querySelectorAll('.patient-item');
-                
-                for (let element of patientElements) {
-                    const alertElement = element.querySelector('.alert-indicator');
-                    const patientId = alertElement.id.replace('alert-', '');
-                    
-                    const measurements = await getPatientMeasurements(patientId);
-                    updatePatientAlert(patientId, measurements);
-                    
-                    // Dacă este pacientul selectat, actualizează valorile
-                    if (selectedPatientId == patientId) {
-                        updateSelectedPatientValues(measurements);
-                    }
-                }
-                
-                document.getElementById('last-update').textContent = new Date().toLocaleString('ro-RO');
-            } catch (error) {
-                console.error('Eroare la actualizarea statusului:', error);
-            }
-        }
-
-        // Actualizare bulinuță alertă pentru un pacient
-        function updatePatientAlert(patientId, measurements) {
-            const alertElement = document.getElementById(`alert-${patientId}`);
-            if (!alertElement) return;
-
-            const temp = parseFloat(measurements.temperatura);
-            const puls = parseInt(measurements.puls);
-            const ecg = parseFloat(measurements.ecg);
-
-            // Logica pentru determinarea tipului de alertă
-            let alertType = 'normal';
-            
-            // Valori critice
-            if (temp > 38.5 || temp < 35.5 || puls > 120 || puls < 50 || ecg > 1.0) {
-                alertType = 'critical';
-            }
-            // Valori de atenționare
-            else if (temp > 37.5 || temp < 36.0 || puls > 100 || puls < 60 || ecg > 0.8) {
-                alertType = 'warning';
-            }
-
-            // Actualizează clasa bulinuței
-            alertElement.className = `alert-indicator alert-${alertType}`;
-        }
-
-        // Actualizare valori pentru pacientul selectat
-        function updateSelectedPatientValues(measurements) {
-            document.getElementById('temp-value').textContent = `${measurements.temperatura}°C`;
-            document.getElementById('pulse-value').textContent = `${measurements.puls} BPM`;
-            document.getElementById('humidity-value').textContent = `${measurements.umiditate}%`;
-
-            // Actualizează statusurile
-            const temp = parseFloat(measurements.temperatura);
-            const puls = parseInt(measurements.puls);
-            const ecgValue = parseFloat(measurements.ecg);
-
-            updateValueStatus('temp', temp, [36.0, 37.5], [35.5, 38.5]);
-            updateValueStatus('pulse', puls, [60, 100], [50, 120]);
-            updateValueStatus('ecg', ecgValue, [0.3, 0.8], [0.2, 1.0]);
-            
-            // Umiditatea este mai mult informativă
-            document.getElementById('humidity-status').textContent = 'Monitorizare';
-            document.getElementById('humidity-status').className = 'value-status status-normal';
-            
-            // ECG-ul se actualizează automat prin animație
-            // Nu mai setăm valoarea manual pentru că avem graficul
-        }
-
-        // Actualizare status pentru o valoare specifică
-        function updateValueStatus(prefix, value, normalRange, criticalRange) {
-            const statusElement = document.getElementById(`${prefix}-status`);
-            
-            if (value < criticalRange[0] || value > criticalRange[1]) {
-                statusElement.textContent = 'CRITIC';
-                statusElement.className = 'value-status status-critical';
-            } else if (value < normalRange[0] || value > normalRange[1]) {
-                statusElement.textContent = 'Atenție';
-                statusElement.className = 'value-status status-warning';
-            } else {
-                statusElement.textContent = 'Normal';
-                statusElement.className = 'value-status status-normal';
-            }
-        }
-
-        // Mod demonstrație - sare peste login
-        function demoMode() {
-            // Simulează un doctor logat
-            currentDoctor = {
-                id: 1,
-                nume: 'Dr. Demo',
-                email: 'demo@spital.ro'
-            };
-            
-            authToken = 'demo_token_123';
-            
-            localStorage.setItem('authToken', authToken);
-            localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
-            
-            showMessage('Mod demonstrație activat! Toate datele sunt simulate.', 'success');
-            showDashboard();
-            
-            // Forțează pornirea monitorizării după o secundă
-            setTimeout(() => {
-                console.log('Pornire monitorizare forțată...');
-                startMonitoring();
-            }, 1000);
-        }
-
-        // Configurare globală
-        let API_BASE_URL = BASE_URL;
-        let authToken = localStorage.getItem('authToken');
-        let currentDoctor = JSON.parse(localStorage.getItem('currentDoctor') || '{}');
-        let selectedPatientId = null;
-        let updateInterval = null;
-        let isApiConnected = false;
-
-        // Actualizare statusuri pacienți (îmbunătățită)
         async function updatePatientsStatus() {
             console.log('Actualizare statusuri pacienți...');
             
@@ -1818,7 +1460,6 @@
                     
                     updatePatientAlert(patientId, measurements);
                     
-                    // Dacă este pacientul selectat, actualizează valorile
                     if (selectedPatientId == patientId) {
                         console.log(`Actualizare valori pentru pacientul selectat: ${patientId}`);
                         updateSelectedPatientValues(measurements);
@@ -1831,6 +1472,89 @@
                 console.error('Eroare la actualizarea statusului:', error);
             }
         }
+
+        function updatePatientAlert(patientId, measurements) {
+            const alertElement = document.getElementById(`alert-${patientId}`);
+            if (!alertElement) return;
+
+            const temp = parseFloat(measurements.temperatura);
+            const puls = parseInt(measurements.puls);
+            const ecg = parseFloat(measurements.ecg);
+
+            let alertType = 'normal';
+            
+            if (temp > 38.5 || temp < 35.5 || puls > 120 || puls < 50 || ecg > 1.0) {
+                alertType = 'critical';
+            }
+            else if (temp > 37.5 || temp < 36.0 || puls > 100 || puls < 60 || ecg > 0.8) {
+                alertType = 'warning';
+            }
+
+            alertElement.className = `alert-indicator alert-${alertType}`;
+        }
+
+        function updateSelectedPatientValues(measurements) {
+            document.getElementById('temp-value').textContent = `${measurements.temperatura}°C`;
+            document.getElementById('pulse-value').textContent = `${measurements.puls} BPM`;
+            document.getElementById('humidity-value').textContent = `${measurements.umiditate}%`;
+
+            const temp = parseFloat(measurements.temperatura);
+            const puls = parseInt(measurements.puls);
+            const ecgValue = parseFloat(measurements.ecg);
+
+            updateValueStatus('temp', temp, [36.0, 37.5], [35.5, 38.5]);
+            updateValueStatus('pulse', puls, [60, 100], [50, 120]);
+            updateValueStatus('ecg', ecgValue, [0.3, 0.8], [0.2, 1.0]);
+            
+            document.getElementById('humidity-status').textContent = 'Monitorizare';
+            document.getElementById('humidity-status').className = 'value-status status-normal';
+        }
+
+        function updateValueStatus(prefix, value, normalRange, criticalRange) {
+            const statusElement = document.getElementById(`${prefix}-status`);
+            
+            if (value < criticalRange[0] || value > criticalRange[1]) {
+                statusElement.textContent = 'CRITIC';
+                statusElement.className = 'value-status status-critical';
+            } else if (value < normalRange[0] || value > normalRange[1]) {
+                statusElement.textContent = 'Atenție';
+                statusElement.className = 'value-status status-warning';
+            } else {
+                statusElement.textContent = 'Normal';
+                statusElement.className = 'value-status status-normal';
+            }
+        }
+
+        function demoMode() {
+            currentDoctor = {
+                id: 1,
+                nume: 'Dr. Demo',
+                email: 'demo@spital.ro'
+            };
+            
+            authToken = 'demo_token_123';
+            
+            localStorage.setItem('authToken', authToken);
+            localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
+            
+            showMessage('Mod demonstrație activat! Toate datele sunt simulate.', 'success');
+            showDashboard();
+            
+            setTimeout(() => {
+                console.log('Pornire monitorizare forțată...');
+                startMonitoring();
+            }, 1000);
+        }
+
+        // Inițializare când se încarcă documentul
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('api-url').value = API_BASE_URL;
+            testApiConnection();
+            
+            if (authToken) {
+                showDashboard();
+            }
+        });
     </script>
 </body>
 </html>

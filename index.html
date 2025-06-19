@@ -547,7 +547,7 @@
     </div>
 
     <script>
-        // 📁 API Functions - exact ca în fișierul colegului
+        // 📁 API Functions - adaptat cu autentificare JWT
         const BASE_URL = "https://6181-74-234-34-29.ngrok-free.app";
 
         // 🔐 Login utilizator în MySQL
@@ -563,51 +563,60 @@
             return res.json();
         }
 
-        // 📋 Lista pacienților medicului
+        // 📋 Lista pacienților medicului (cu autentificare)
         async function getPacienti(idMedic) {
             const res = await fetch(`${BASE_URL}/medic/${idMedic}/pacienti`, {
                 headers: {
+                    "Authorization": `Bearer ${authToken}`,
+                    "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "true"
                 }
             });
             return res.json();
         }
 
-        // 📊 Măsurători recente pentru un pacient
+        // 📊 Măsurători recente pentru un pacient (cu autentificare)
         async function getMasuratori(idPacient) {
             const res = await fetch(`${BASE_URL}/pacient/${idPacient}/masuratori`, {
                 headers: {
+                    "Authorization": `Bearer ${authToken}`,
+                    "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "true"
                 }
             });
             return res.json();
         }
 
-        // 🚨 Alerte pentru pacient
+        // 🚨 Alerte pentru pacient (cu autentificare)
         async function getAlerte(idPacient) {
             const res = await fetch(`${BASE_URL}/pacient/${idPacient}/alerte`, {
                 headers: {
+                    "Authorization": `Bearer ${authToken}`,
+                    "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "true"
                 }
             });
             return res.json();
         }
 
-        // 💬 Recomandări existente
+        // 💬 Recomandări existente (cu autentificare)
         async function getRecomandari(idPacient) {
             const res = await fetch(`${BASE_URL}/pacient/${idPacient}/recomandari`, {
                 headers: {
+                    "Authorization": `Bearer ${authToken}`,
+                    "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "true"
                 }
             });
             return res.json();
         }
 
-        // ➕ Trimite o recomandare nouă
+        // ➕ Trimite o recomandare nouă (cu autentificare)
         async function trimiteRecomandare(idPacient, text) {
             const res = await fetch(`${BASE_URL}/pacient/${idPacient}/recomandari`, {
                 method: "POST",
                 headers: { 
+                    "Authorization": `Bearer ${authToken}`,
                     "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "true"
                 },

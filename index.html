@@ -448,9 +448,9 @@
                 <h2>🩺 Autentificare Medic</h2>
                 <form onsubmit="handleLogin(event)">
                     <div class="form-group">
-                        <label for="login-email">Email/Username:</label>
-                        <input type="text" id="login-email" placeholder="username sau email" 
-                               value="testuser" required>
+                        <label for="login-email">Username:</label>
+                        <input type="text" id="login-email" placeholder="Username medic" 
+                               value="doctor1" required>
                     </div>
                     <div class="form-group">
                         <label for="login-password">Parolă:</label>
@@ -642,10 +642,12 @@
         async function handleLogin(event) {
             event.preventDefault();
             
-            const email = document.getElementById('login-email').value;
+            const username = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
 
             try {
+                showMessage('Se încearcă conectarea...', 'info');
+                
                 // Folosește exact formatul pe care îl așteaptă API-ul colegului
                 const response = await fetch(`${API_BASE_URL}/login`, {
                     method: 'POST',
@@ -653,34 +655,48 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ 
-                        username: email,  // API-ul colegului folosește "username" 
+                        username: username,  // API-ul colegului folosește "username" 
                         password: password 
                     })
                 });
 
-                const data = await response.json();
-
-                if (response.ok && data.token) {
-                    authToken = data.token;
+                console.log('Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Login response:', data);
                     
-                    // Obține profilul utilizatorului
-                    await getUserProfile();
-                    
-                    localStorage.setItem('authToken', authToken);
-                    localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
-                    
-                    showMessage('Autentificare reușită!', 'success');
-                    showDashboard();
+                    if (data.token) {
+                        authToken = data.token;
+                        
+                        // Obține profilul utilizatorului
+                        await getUserProfile();
+                        
+                        localStorage.setItem('authToken', authToken);
+                        localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
+                        
+                        showMessage('Autentificare reușită! Conectat la API-ul real.', 'success');
+                        showDashboard();
+                    } else {
+                        showMessage('API-ul nu a returnat token-ul de autentificare', 'error');
+                    }
                 } else {
-                    showMessage(data.message || 'Email sau parolă incorectă', 'error');
+                    const errorText = await response.text();
+                    console.error('Login error:', errorText);
+                    
+                    if (response.status === 401) {
+                        showMessage('Username sau parolă incorectă. Verifică: doctor1 / Test1234!', 'error');
+                    } else {
+                        showMessage(`Eroare API: ${errorText}`, 'error');
+                    }
                 }
             } catch (error) {
-                showMessage('Eroare de conexiune la API. Verifică dacă serverul rulează.', 'error');
-                console.error('Eroare login:', error);
+                console.error('Eroare conexiune:', error);
+                showMessage('Eroare de conexiune la API. Verifică dacă serverul colegului rulează.', 'error');
             }
         }
 
-        // Obține profilul utilizatorului după login
+        // Obține profilul utilizatorului după login (adaptat la API-ul colegului)
         async function getUserProfile() {
             try {
                 const response = await fetch(`${API_BASE_URL}/profile`, {
@@ -693,23 +709,30 @@
 
                 if (response.ok) {
                     const profileData = await response.json();
+                    console.log('Profile data:', profileData);
+                    
                     currentDoctor = {
-                        id: profileData.id || profileData._id,
-                        nume: profileData.username || profileData.nume || 'Doctor',
-                        email: profileData.email || document.getElementById('login-email').value
+                        id: profileData._id || profileData.id || 1,
+                        nume: `Dr. ${profileData.username}` || 'Dr. Medical',
+                        email: profileData.email || `${profileData.username}@spital.ro`,
+                        username: profileData.username
                     };
                 } else {
-                    // Dacă nu merge /profile, folosește datele de bază
+                    console.log('Profile endpoint nu funcționează, folosesc date de bază');
                     currentDoctor = {
-                        nume: 'Doctor',
-                        email: document.getElementById('login-email').value
+                        id: 1,
+                        nume: `Dr. ${document.getElementById('login-email').value}`,
+                        email: `${document.getElementById('login-email').value}@spital.ro`,
+                        username: document.getElementById('login-email').value
                     };
                 }
             } catch (error) {
                 console.error('Eroare la obținerea profilului:', error);
                 currentDoctor = {
-                    nume: 'Doctor',
-                    email: document.getElementById('login-email').value
+                    id: 1,
+                    nume: `Dr. ${document.getElementById('login-email').value}`,
+                    email: `${document.getElementById('login-email').value}@spital.ro`,
+                    username: document.getElementById('login-email').value
                 };
             }
         }
@@ -1070,7 +1093,7 @@
             }
         }
 
-                // Încărcare lista pacienților din API
+        // Încărcare lista pacienților din API
         async function loadPatients() {
             try {
                 // Dacă e mod demo, folosește date simulate
@@ -1113,41 +1136,50 @@
                     return;
                 }
 
-                // Încearcă să obții lista pacienților din API real
-                let response = await fetch(`${API_BASE_URL}/medic/${currentDoctor.id}/pacienti`, {
+                // Încearcă să obții lista pacienților din API-ul real al colegului
+                console.log('Încărcare pacienți din API real...');
+                
+                const response = await fetch(`${API_BASE_URL}/pacienti`, {
                     headers: {
-                        'Authorization': `Bearer ${authToken}`
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
                     }
                 });
 
-                // Dacă nu merge cu ID-ul medicului, încearcă un endpoint generic
-                if (!response.ok) {
-                    response = await fetch(`${API_BASE_URL}/pacienti`, {
-                        headers: {
-                            'Authorization': `Bearer ${authToken}`
-                        }
-                    });
-                }
+                console.log('Response pacienti:', response.status);
 
                 if (response.ok) {
                     const patients = await response.json();
-                    displayPatients(patients);
+                    console.log('Pacienți primiti din API:', patients);
+                    
+                    // Adaptează structura dacă e diferită
+                    const adaptedPatients = patients.map(patient => ({
+                        id_pacient: patient.id_pacient || patient.id,
+                        nume: patient.nume || 'Necunoscut',
+                        prenume: patient.prenume || 'Pacient',
+                        email: patient.email || 'N/A',
+                        diagnostic: patient.diagnostic || 'Monitorizare generală',
+                        camera: patient.camera || 'N/A'
+                    }));
+                    
+                    displayPatients(adaptedPatients);
+                    showMessage(`${adaptedPatients.length} pacienți încărcați din API real`, 'success');
                 } else {
-                    throw new Error('Nu s-au putut încărca pacienții');
+                    throw new Error(`API /pacienti răspunde cu status ${response.status}`);
                 }
             } catch (error) {
-                console.error('Eroare la încărcarea pacienților:', error);
+                console.error('Eroare la încărcarea pacienților din API:', error);
                 
-                // Dacă API-ul nu funcționează, folosește date simulate
+                // Fallback la date simulate cu mesaj explicativ
                 const mockPatients = [
-                    { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com', diagnostic: 'Infecție respiratorie', camera: '101' },
-                    { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com', diagnostic: 'Post-operator', camera: '102' },
-                    { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com', diagnostic: 'Aritmie cardiacă', camera: '103' },
-                    { id_pacient: 4, nume: 'Georgescu', prenume: 'Ana', email: 'ana.georgescu@email.com', diagnostic: 'Hipotensiune', camera: '104' }
+                    { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com', diagnostic: 'Simulat - Infecție respiratorie', camera: '101' },
+                    { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com', diagnostic: 'Simulat - Post-operator', camera: '102' },
+                    { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com', diagnostic: 'Simulat - Aritmie cardiacă', camera: '103' },
+                    { id_pacient: 4, nume: 'Georgescu', prenume: 'Ana', email: 'ana.georgescu@email.com', diagnostic: 'Simulat - Hipotensiune', camera: '104' }
                 ];
                 displayPatients(mockPatients);
                 
-                showMessage('API indisponibil - se folosesc date simulate pentru demonstrație', 'info');
+                showMessage('Endpoint /pacienti nu funcționează - folosind date simulate', 'info');
             }
         }
 

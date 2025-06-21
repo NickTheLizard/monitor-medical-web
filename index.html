@@ -20,7 +20,8 @@
             
             // Test 1: Ping simplu fără headers care cauzează CORS
             console.log('📡 Test 1: Ping la URL de bază...');
-            try {
+        // 📊 Măsurători pentru pacient din API-ul PHP  
+        async function getMasuratori_PHP(idPacient) {
                 const pingResponse = await fetch(apiUrl, {
                     method: 'GET',
                     mode: 'no-cors', // Bypass CORS pentru test
@@ -38,7 +39,8 @@
             const endpoints = [
                 'get_pacienti.php',
                 'login_medic.php', 
-                'get_masuratori.php'
+                'get_masuratori.php',
+                'adauga_indicatie.php'
             ];
             
             for (let endpoint of endpoints) {
@@ -623,6 +625,47 @@ Apoi să repornească XAMPP și să testeze din nou.
                         <div class="value-status status-normal" id="ecg-status">Normal</div>
                     </div>
                 </div>
+                
+                <!-- Secțiune pentru recomandări/indicații -->
+                <div class="recommendations-section" style="margin-top: 30px;">
+                    <h4 style="color: #2c5282; margin-bottom: 20px; text-align: center;">
+                        💬 Recomandări și Indicații
+                    </h4>
+                    
+                    <!-- Formular pentru adăugare indicație nouă -->
+                    <div class="add-recommendation" style="background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                        <h5 style="color: #4a5568; margin-bottom: 15px;">Adaugă indicație nouă:</h5>
+                        <div style="display: flex; gap: 10px; align-items: flex-end;">
+                            <div style="flex-grow: 1;">
+                                <textarea 
+                                    id="new-recommendation-text" 
+                                    placeholder="Scrie indicația pentru pacient (ex: Odihnă completă și hidratare corespunzătoare)"
+                                    style="width: 100%; padding: 12px; border: 1px solid #d2d6dc; border-radius: 8px; font-size: 14px; resize: vertical; min-height: 80px;"
+                                    rows="3"
+                                    onkeydown="handleRecommendationKeyDown(event)"
+                                ></textarea>
+                                <div style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
+                                    💡 Apasă Ctrl+Enter pentru a trimite rapid
+                                </div>
+                            </div>
+                            <button 
+                                class="btn btn-small" 
+                                onclick="addRecommendation()"
+                                style="background: #38a169; white-space: nowrap; min-width: 120px;"
+                            >
+                                📝 Trimite
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Lista indicațiilor existente -->
+                    <div id="recommendations-list" style="background: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 20px;">
+                        <h5 style="color: #1e40af; margin-bottom: 15px;">Indicații anterioare:</h5>
+                        <div id="recommendations-content">
+                            <p style="color: #6b7280; font-style: italic;">Selectează un pacient pentru a vedea indicațiile...</p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="last-update">
@@ -691,8 +734,30 @@ Apoi să repornească XAMPP și să testeze din nou.
             }
         }
 
-        // 📊 Măsurători pentru pacient din API-ul PHP  
-        async function getMasuratori_PHP(idPacient) {
+        // 💬 Adaugă indicație nouă pentru pacient din API-ul PHP  
+        async function adaugaIndicatiePHP(idMedic, idPacient, indicatie) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/adauga_indicatie.php`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json", 
+                        "ngrok-skip-browser-warning": "true"
+                    },
+                    body: JSON.stringify({ 
+                        id_medic: parseInt(idMedic),
+                        id_pacient: parseInt(idPacient),
+                        indicatie: indicatie
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('Răspuns adaugare indicație PHP:', data);
+                return data;
+            } catch (error) {
+                console.error('Eroare API adaugare indicație PHP:', error);
+                throw error;
+            }
+        }
             try {
                 const response = await fetch(`${API_BASE_URL}/get_masuratori.php`, {
                     method: "POST",
@@ -992,7 +1057,7 @@ Verifică:
             });
         }
 
-        // Selectare pacient (îmbunătățită pentru API PHP)
+        // Selectare pacient (îmbunătățită pentru API PHP + recomandări)
         function selectPatient(patientId, patientName) {
             console.log(`Selectare pacient: ${patientId} - ${patientName}`);
             
@@ -1013,12 +1078,89 @@ Verifică:
                 const measurements = await getPatientMeasurementsPHP(patientId);
                 updateSelectedPatientValues(measurements);
                 
+                // Încarcă indicațiile pentru pacientul selectat
+                await loadPatientRecommendations(patientId);
+                
                 // Reinițializează ECG pentru noul pacient
                 if (ecgAnimation) {
                     cancelAnimationFrame(ecgAnimation);
                 }
                 initializeECG();
             }, 100);
+        }
+
+        // Adaugă recomandare nouă pentru pacientul selectat
+        async function addRecommendation() {
+            if (!selectedPatientId) {
+                showMessage('Te rog selectează mai întâi un pacient!', 'error');
+                return;
+            }
+
+            const recommendationText = document.getElementById('new-recommendation-text').value.trim();
+            if (!recommendationText) {
+                showMessage('Te rog introdu textul indicației!', 'error');
+                return;
+            }
+
+            try {
+                showMessage('Se trimite indicația...', 'info');
+                
+                const result = await adaugaIndicatiePHP(
+                    currentDoctor.id, 
+                    selectedPatientId, 
+                    recommendationText
+                );
+                
+                if (result.success) {
+                    showMessage('Indicația a fost adăugată cu succes!', 'success');
+                    
+                    // Curăță textul din formular
+                    document.getElementById('new-recommendation-text').value = '';
+                    
+                    // Reîncarcă lista de indicații
+                    await loadPatientRecommendations(selectedPatientId);
+                } else {
+                    throw new Error(result.message || 'Eroare la adăugarea indicației');
+                }
+            } catch (error) {
+                console.error('Eroare la adăugarea recomandării:', error);
+                showMessage(`Eroare la salvarea indicației: ${error.message}`, 'error');
+            }
+        }
+
+        // Încarcă indicațiile pentru un pacient (placeholder - colegul va implementa endpoint-ul)
+        async function loadPatientRecommendations(patientId) {
+            try {
+                console.log(`Încărcare indicații pentru pacientul ${patientId}`);
+                
+                // Pentru moment, afișează un mesaj că indicația a fost salvată
+                const recommendationsContent = document.getElementById('recommendations-content');
+                
+                // Simulează indicațiile existente (până când colegul implementează get_indicatii.php)
+                const currentTime = new Date().toLocaleString('ro-RO');
+                recommendationsContent.innerHTML = `
+                    <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #38a169;">
+                        <div style="font-weight: bold; color: #2d3748; margin-bottom: 5px;">
+                            Dr. ${currentDoctor.nume || currentDoctor.username} - ${currentTime}
+                        </div>
+                        <div style="color: #4a5568;">
+                            Indicațiile au fost salvate în baza de date. Pentru a vedea istoricul complet, colegul va implementa endpoint-ul <code>get_indicatii.php</code>.
+                        </div>
+                    </div>
+                    <div style="background: #f7fafc; padding: 10px; border-radius: 8px; font-size: 0.9em; color: #6b7280;">
+                        💡 <strong>Pentru dezvoltatori:</strong> Implementați <code>GET /get_indicatii.php</code> care să primească <code>id_pacient</code> și să returneze lista indicațiilor din tabela <code>indicatii</code>.
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Eroare la încărcarea indicațiilor:', error);
+                
+                const recommendationsContent = document.getElementById('recommendations-content');
+                recommendationsContent.innerHTML = `
+                    <div style="background: #fed7d7; color: #c53030; padding: 15px; border-radius: 8px;">
+                        ❌ Eroare la încărcarea indicațiilor: ${error.message}
+                    </div>
+                `;
+            }
         }
 
         // Obținere măsurători folosind doar API-ul PHP (fără date simulate)

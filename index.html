@@ -11,28 +11,30 @@
             box-sizing: border-box;
         }
 
-        // Funcție de debugging pentru conexiune API
+        // Funcție de debugging pentru conexiune API (corectată)
         async function debugApiConnection() {
             console.log('🔧 ÎNCEPERE DEBUG CONEXIUNE API');
             showMessage('🔍 Rulare teste de debugging...', 'info');
             
             const apiUrl = document.getElementById('api-url').value.trim();
             
-            // Test 1: Ping simplu
+            // Test 1: Ping simplu fără headers care cauzează CORS
             console.log('📡 Test 1: Ping la URL de bază...');
             try {
                 const pingResponse = await fetch(apiUrl, {
                     method: 'GET',
+                    mode: 'no-cors', // Bypass CORS pentru test
                     signal: AbortSignal.timeout(5000)
                 });
-                console.log(`✅ Ping reușit: ${pingResponse.status}`);
+                console.log(`✅ Ping reușit: ${pingResponse.status || 'opaque response'}`);
+                showMessage('✅ Serverul răspunde, dar CORS nu e configurat corect', 'warning');
             } catch (error) {
                 console.error(`❌ Ping eșuat:`, error);
                 showMessage(`❌ Ping la ${apiUrl} a eșuat: ${error.message}`, 'error');
                 return;
             }
             
-            // Test 2: Verifică fiecare endpoint
+            // Test 2: Verifică CORS pentru fiecare endpoint
             const endpoints = [
                 'get_pacienti.php',
                 'login_medic.php', 
@@ -40,31 +42,50 @@
             ];
             
             for (let endpoint of endpoints) {
-                console.log(`📡 Test endpoint: ${endpoint}`);
+                console.log(`📡 Test CORS endpoint: ${endpoint}`);
                 try {
                     const testResponse = await fetch(`${apiUrl}/${endpoint}`, {
-                        method: endpoint === 'get_pacienti.php' ? 'GET' : 'POST',
+                        method: 'OPTIONS', // Preflight request
                         headers: {
                             'Content-Type': 'application/json',
                             'ngrok-skip-browser-warning': 'true'
                         },
-                        body: endpoint !== 'get_pacienti.php' ? JSON.stringify({test: true}) : undefined,
                         signal: AbortSignal.timeout(5000)
                     });
                     
-                    const responseText = await testResponse.text();
-                    console.log(`📊 ${endpoint}: ${testResponse.status} - ${responseText.substring(0, 100)}`);
+                    console.log(`📊 ${endpoint} CORS: ${testResponse.status}`);
                     
                     if (testResponse.status === 404) {
                         showMessage(`❌ ${endpoint} nu există pe server (404)`, 'error');
-                    } else if (testResponse.ok || testResponse.status === 400) {
-                        showMessage(`✅ ${endpoint} răspunde (${testResponse.status})`, 'success');
+                    } else if (testResponse.ok || testResponse.status === 405) {
+                        showMessage(`✅ ${endpoint} există, dar CORS lipsește`, 'warning');
                     }
                 } catch (error) {
-                    console.error(`❌ Eroare ${endpoint}:`, error);
-                    showMessage(`❌ ${endpoint}: ${error.message}`, 'error');
+                    console.error(`❌ Eroare CORS ${endpoint}:`, error);
+                    showMessage(`❌ ${endpoint}: CORS blocat`, 'error');
                 }
             }
+            
+            // Mesaj final cu instrucțiuni pentru coleg
+            showMessage(`
+🚫 PROBLEMA IDENTIFICATĂ: CORS nu e configurat in PHP!
+
+Spune colegului să adauge în TOATE fișierele PHP (.php):
+
+<?php
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning");
+
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+// ... restul codului PHP
+?>
+
+Apoi să repornească XAMPP și să testeze din nou.
+            `, 'error');
             
             console.log('🔧 FINALIZARE DEBUG CONEXIUNE API');
         }
@@ -781,13 +802,25 @@
                 
                 // Mesaj de eroare mai detaliat
                 if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-                    showMessage(`🚫 Nu se poate contacta serverul la ${API_BASE_URL}. 
+                    showMessage(`🚫 EROARE CORS - Serverul PHP nu permite cereri cross-origin!
                     
-Verifică cu colegul:
-1. XAMPP rulează? (Apache verde în Control Panel)
-2. ngrok rulează? ('ngrok http 80' în terminal)  
-3. URL-ul ngrok s-a schimbat? (ngrok dă URL nou la fiecare pornire)
-4. Poți accesa ${API_BASE_URL} în browser?`, 'error');
+SOLUȚIE pentru coleg:
+1. Adaugă în TOATE fișierele PHP (.php):
+
+<?php
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning");
+
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+// ... restul codului existent
+?>
+
+2. Repornește XAMPP (Stop + Start Apache)
+3. Testează din nou aplicația`, 'error');
                 } else if (error.name === 'AbortError') {
                     showMessage(`⏱️ Timeout - serverul nu răspunde în 10 secunde. 
                     

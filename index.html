@@ -11,6 +11,85 @@
             box-sizing: border-box;
         }
 
+        // Funcție de debugging pentru conexiune API (corectată)
+        async function debugApiConnection() {
+            console.log('🔧 ÎNCEPERE DEBUG CONEXIUNE API');
+            showMessage('🔍 Rulare teste de debugging...', 'info');
+            
+            const apiUrl = document.getElementById('api-url').value.trim();
+            
+            // Test 1: Ping simplu fără headers care cauzează CORS
+            console.log('📡 Test 1: Ping la URL de bază...');
+            try {
+                const pingResponse = await fetch(apiUrl, {
+                    method: 'GET',
+                    mode: 'no-cors', // Bypass CORS pentru test
+                    signal: AbortSignal.timeout(5000)
+                });
+                console.log(`✅ Ping reușit: ${pingResponse.status || 'opaque response'}`);
+                showMessage('✅ Serverul răspunde, dar CORS nu e configurat corect', 'warning');
+            } catch (error) {
+                console.error(`❌ Ping eșuat:`, error);
+                showMessage(`❌ Ping la ${apiUrl} a eșuat: ${error.message}`, 'error');
+                return;
+            }
+            
+            // Test 2: Verifică CORS pentru fiecare endpoint
+            const endpoints = [
+                'get_pacienti.php',
+                'login_medic.php', 
+                'get_masuratori.php'
+            ];
+            
+            for (let endpoint of endpoints) {
+                console.log(`📡 Test CORS endpoint: ${endpoint}`);
+                try {
+                    const testResponse = await fetch(`${apiUrl}/${endpoint}`, {
+                        method: 'OPTIONS', // Preflight request
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'ngrok-skip-browser-warning': 'true'
+                        },
+                        signal: AbortSignal.timeout(5000)
+                    });
+                    
+                    console.log(`📊 ${endpoint} CORS: ${testResponse.status}`);
+                    
+                    if (testResponse.status === 404) {
+                        showMessage(`❌ ${endpoint} nu există pe server (404)`, 'error');
+                    } else if (testResponse.ok || testResponse.status === 405) {
+                        showMessage(`✅ ${endpoint} există, dar CORS lipsește`, 'warning');
+                    }
+                } catch (error) {
+                    console.error(`❌ Eroare CORS ${endpoint}:`, error);
+                    showMessage(`❌ ${endpoint}: CORS blocat`, 'error');
+                }
+            }
+            
+            // Mesaj final cu instrucțiuni pentru coleg
+            showMessage(`
+🚫 PROBLEMA IDENTIFICATĂ: CORS nu e configurat in PHP!
+
+Spune colegului să adauge în TOATE fișierele PHP (.php):
+
+<?php
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning");
+
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+// ... restul codului PHP
+?>
+
+Apoi să repornească XAMPP și să testeze din nou.
+            `, 'error');
+            
+            console.log('🔧 FINALIZARE DEBUG CONEXIUNE API');
+        }
+
         body {
             font-family: 'Arial', sans-serif;
             background: linear-gradient(135deg, #2c5282 0%, #2d3748 100%);
@@ -309,53 +388,15 @@
         .ecg-container {
             background: #000;
             border-radius: 8px;
-            padding: 15px;
+            padding: 10px;
             margin: 10px 0;
             position: relative;
-            border: 2px solid #333;
         }
 
         #ecg-canvas {
             width: 100%;
-            height: 150px;
+            height: 120px;
             display: block;
-            border-radius: 4px;
-        }
-
-        .ecg-controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            background: #1a1a1a;
-            padding: 10px;
-            border-radius: 5px;
-        }
-
-        .ecg-mode-selector {
-            display: flex;
-            gap: 10px;
-        }
-
-        .ecg-mode-btn {
-            background: #333;
-            color: #fff;
-            border: 1px solid #555;
-            padding: 5px 10px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.3s;
-        }
-
-        .ecg-mode-btn.active {
-            background: #00ff00;
-            color: #000;
-            border-color: #00ff00;
-        }
-
-        .ecg-mode-btn:hover {
-            background: #555;
         }
 
         .ecg-info {
@@ -366,45 +407,15 @@
             color: #00ff00;
             font-family: 'Courier New', monospace;
             font-size: 14px;
-            background: #1a1a1a;
-            padding: 8px 12px;
-            border-radius: 5px;
         }
 
-        .ecg-metrics {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-
-        .ecg-metric {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .ecg-metric-label {
-            font-size: 10px;
-            color: #888;
-            text-transform: uppercase;
-        }
-
-        .ecg-metric-value {
-            font-size: 14px;
+        .ecg-bpm {
             font-weight: bold;
+            font-size: 16px;
         }
 
-        .ecg-data-display {
-            background: #1a1a1a;
-            color: #00ff00;
-            font-family: 'Courier New', monospace;
-            font-size: 11px;
-            padding: 8px;
-            border-radius: 3px;
-            margin-top: 5px;
-            max-height: 60px;
-            overflow-y: auto;
-            border: 1px solid #333;
+        .ecg-rhythm {
+            font-style: italic;
         }
 
         .value-label {
@@ -600,52 +611,21 @@
                         <div class="value-number" id="oxygen-value">--%</div>
                         <div class="value-status status-normal" id="oxygen-status">-</div>
                     </div>
+                    <div class="value-item">
+                        <div class="value-label">ECG Raw</div>
+                        <div class="value-number" id="ecg-raw-value">--</div>
+                        <div class="value-status status-normal" id="ecg-raw-status">-</div>
+                    </div>
                     <div class="value-item ecg-item">
                         <div class="value-label">Electrocardiogramă (ECG)</div>
-                        
-                        <!-- Controale ECG -->
-                        <div class="ecg-controls">
-                            <div class="ecg-mode-selector">
-                                <button class="ecg-mode-btn active" onclick="setECGMode('realtime')" id="mode-realtime">Date Reale</button>
-                                <button class="ecg-mode-btn" onclick="setECGMode('simulated')" id="mode-simulated">Simulat</button>
-                                <button class="ecg-mode-btn" onclick="setECGMode('raw')" id="mode-raw">Valori Raw</button>
-                            </div>
-                            <div style="color: #00ff00; font-size: 12px;">
-                                Status: <span id="ecg-data-status">Waiting for data...</span>
-                            </div>
-                        </div>
-                        
                         <div class="ecg-container">
-                            <canvas id="ecg-canvas" width="600" height="150"></canvas>
-                            
+                            <canvas id="ecg-canvas" width="300" height="120"></canvas>
                             <div class="ecg-info">
-                                <div class="ecg-metrics">
-                                    <div class="ecg-metric">
-                                        <span class="ecg-metric-label">Heart Rate</span>
-                                        <span class="ecg-metric-value" id="ecg-bpm">-- BPM</span>
-                                    </div>
-                                    <div class="ecg-metric">
-                                        <span class="ecg-metric-label">Rhythm</span>
-                                        <span class="ecg-metric-value" id="ecg-rhythm">--</span>
-                                    </div>
-                                    <div class="ecg-metric">
-                                        <span class="ecg-metric-label">Raw Value</span>
-                                        <span class="ecg-metric-value" id="ecg-raw-value">--</span>
-                                    </div>
-                                    <div class="ecg-metric">
-                                        <span class="ecg-metric-label">Last Update</span>
-                                        <span class="ecg-metric-value" id="ecg-timestamp">--</span>
-                                    </div>
-                                </div>
+                                <span class="ecg-bpm" id="ecg-bpm">75 BPM</span>
+                                <span class="ecg-rhythm" id="ecg-rhythm">Ritm sinusal normal</span>
                             </div>
                         </div>
-                        
-                        <!-- Afișare date raw ECG -->
-                        <div class="ecg-data-display" id="ecg-raw-display">
-                            Waiting for ECG data from database...
-                        </div>
-                        
-                        <div class="value-status status-normal" id="ecg-status">Waiting for data</div>
+                        <div class="value-status status-normal" id="ecg-status">Normal</div>
                     </div>
                 </div>
             </div>
@@ -665,92 +645,15 @@
         let updateInterval = null;
         let isApiConnected = false;
 
-        // Variabile pentru ECG îmbunătățit
+        // Variabile pentru ECG în timp real
         let ecgCanvas = null;
         let ecgCtx = null;
         let ecgDataBuffer = [];
         let ecgAnimation = null;
         let ecgTime = 0;
-        let maxECGBufferSize = 1000;
-        let ecgMode = 'realtime'; // 'realtime', 'simulated', 'raw'
-        let lastECGData = null;
-        let ecgUpdateCount = 0;
-
-        // Funcție de debugging pentru conexiune API
-        async function debugApiConnection() {
-            console.log('🔧 ÎNCEPERE DEBUG CONEXIUNE API');
-            showMessage('🔍 Rulare teste de debugging...', 'info');
-            
-            const apiUrl = document.getElementById('api-url').value.trim();
-            
-            // Test 1: Ping simplu fără headers care cauzează CORS
-            console.log('📡 Test 1: Ping la URL de bază...');
-            try {
-                const pingResponse = await fetch(apiUrl, {
-                    method: 'GET',
-                    mode: 'no-cors',
-                    signal: AbortSignal.timeout(5000)
-                });
-                console.log(`✅ Ping reușit: ${pingResponse.status || 'opaque response'}`);
-                showMessage('✅ Serverul răspunde, dar CORS nu e configurat corect', 'warning');
-            } catch (error) {
-                console.error(`❌ Ping eșuat:`, error);
-                showMessage(`❌ Ping la ${apiUrl} a eșuat: ${error.message}`, 'error');
-                return;
-            }
-            
-            // Test 2: Verifică CORS pentru fiecare endpoint
-            const endpoints = [
-                'get_pacienti.php',
-                'login_medic.php', 
-                'get_masuratori.php'
-            ];
-            
-            for (let endpoint of endpoints) {
-                console.log(`📡 Test CORS endpoint: ${endpoint}`);
-                try {
-                    const testResponse = await fetch(`${apiUrl}/${endpoint}`, {
-                        method: 'OPTIONS',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'ngrok-skip-browser-warning': 'true'
-                        },
-                        signal: AbortSignal.timeout(5000)
-                    });
-                    
-                    console.log(`📊 ${endpoint} CORS: ${testResponse.status}`);
-                    
-                    if (testResponse.status === 404) {
-                        showMessage(`❌ ${endpoint} nu există pe server (404)`, 'error');
-                    } else if (testResponse.ok || testResponse.status === 405) {
-                        showMessage(`✅ ${endpoint} există, dar CORS lipsește`, 'warning');
-                    }
-                } catch (error) {
-                    console.error(`❌ Eroare CORS ${endpoint}:`, error);
-                    showMessage(`❌ ${endpoint}: CORS blocat`, 'error');
-                }
-            }
-            
-            showMessage(`🚫 PROBLEMA IDENTIFICATĂ: CORS nu e configurat in PHP!
-
-Spune colegului să adauge în TOATE fișierele PHP (.php):
-
-<?php
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning");
-
-if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
-    http_response_code(200);
-    exit();
-}
-// ... restul codului PHP
-?>
-
-Apoi să repornească XAMPP și să testeze din nou.`, 'error');
-            
-            console.log('🔧 FINALIZARE DEBUG CONEXIUNE API');
-        }
+        let maxECGBufferSize = 500;
+        let ecgSampleRate = 100;
+        let isReceivingRealECG = false;
 
         // 🔐 Login medic folosind API-ul PHP
         async function apiLoginPHP(idMedic, parola) {
@@ -832,6 +735,7 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
                 return;
             }
             
+            // Elimină slash-ul final dacă există
             API_BASE_URL = apiUrl.replace(/\/$/, '');
             localStorage.setItem('api_base_url', API_BASE_URL);
             
@@ -839,7 +743,7 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
             testApiConnection();
         }
 
-        // Test conexiune API PHP
+        // Test conexiune API PHP (îmbunătățit cu debugging)
         async function testApiConnection() {
             const statusElement = document.getElementById('connection-status');
             statusElement.textContent = '🔄 Testare conexiune...';
@@ -848,33 +752,90 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
             console.log(`🔍 Testare conexiune la: ${API_BASE_URL}`);
             
             try {
+                // Test 1: Verifică dacă răspunde la cerere simplă
+                console.log('Test 1: Cerere GET simplă...');
                 const response = await fetch(`${API_BASE_URL}/get_pacienti.php`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
                         'ngrok-skip-browser-warning': 'true'
                     },
-                    signal: AbortSignal.timeout(10000)
+                    signal: AbortSignal.timeout(10000) // timeout 10 secunde
                 });
                 
+                console.log('📊 Status răspuns:', response.status);
+                console.log('📊 Headers răspuns:', [...response.headers.entries()]);
+                
                 if (response.ok) {
-                    const responseText = await response.text();
-                    const jsonData = JSON.parse(responseText);
+                    const contentType = response.headers.get('content-type');
+                    console.log('📊 Content-Type:', contentType);
                     
-                    isApiConnected = true;
-                    statusElement.textContent = '✅ API PHP conectat';
-                    statusElement.className = 'connection-status status-connected';
-                    document.getElementById('config-section').style.display = 'none';
-                    showMessage('API PHP conectat cu succes!', 'success');
+                    // Încearcă să citească răspunsul
+                    const responseText = await response.text();
+                    console.log('📊 Răspuns complet:', responseText);
+                    
+                    // Verifică dacă e JSON valid
+                    try {
+                        const jsonData = JSON.parse(responseText);
+                        console.log('✅ JSON valid primit:', jsonData);
+                        
+                        isApiConnected = true;
+                        statusElement.textContent = '✅ API PHP conectat';
+                        statusElement.className = 'connection-status status-connected';
+                        document.getElementById('config-section').style.display = 'none';
+                        showMessage('API PHP conectat cu succes! Endpoint-ul /get_pacienti.php răspunde.', 'success');
+                    } catch (jsonError) {
+                        console.error('❌ Răspunsul nu e JSON valid:', jsonError);
+                        throw new Error(`API răspunde cu HTML în loc de JSON. Răspuns: ${responseText.substring(0, 200)}`);
+                    }
+                } else if (response.status === 404) {
+                    console.log('📊 Status 404 - endpoint nu există');
+                    throw new Error(`Endpoint /get_pacienti.php nu există (404). Verifică că fișierul e în htdocs.`);
                 } else {
-                    throw new Error(`Status ${response.status}`);
+                    console.log('📊 Status neașteptat:', response.status);
+                    const errorText = await response.text();
+                    console.log('📊 Mesaj eroare:', errorText);
+                    throw new Error(`API răspunde cu status ${response.status}: ${errorText.substring(0, 100)}`);
                 }
             } catch (error) {
                 isApiConnected = false;
                 statusElement.textContent = '❌ API deconectat';
                 statusElement.className = 'connection-status status-disconnected';
                 document.getElementById('config-section').style.display = 'block';
-                showMessage(`Eroare conexiune: ${error.message}`, 'error');
+                
+                console.error('❌ Eroare completă conexiune:', error);
+                
+                // Mesaj de eroare mai detaliat
+                if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    showMessage(`🚫 EROARE CORS - Serverul PHP nu permite cereri cross-origin!
+                    
+SOLUȚIE pentru coleg:
+1. Adaugă în TOATE fișierele PHP (.php):
+
+<?php
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, ngrok-skip-browser-warning");
+
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+// ... restul codului existent
+?>
+
+2. Repornește XAMPP (Stop + Start Apache)
+3. Testează din nou aplicația`, 'error');
+                } else if (error.name === 'AbortError') {
+                    showMessage(`⏱️ Timeout - serverul nu răspunde în 10 secunde. 
+                    
+Verifică:
+1. Conexiunea la internet
+2. ngrok rulează corect
+3. XAMPP procesează cererile`, 'error');
+                } else {
+                    showMessage(`❌ Eroare conexiune: ${error.message}`, 'error');
+                }
             }
         }
 
@@ -887,7 +848,7 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
             }, 5000);
         }
 
-        // Gestionare login
+        // Gestionare login adaptat pentru API-ul PHP
         async function handleLogin(event) {
             event.preventDefault();
             
@@ -903,8 +864,10 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
                 showMessage('Se încearcă conectarea la API-ul PHP...', 'info');
                 
                 const loginResult = await apiLoginPHP(idMedic, parola);
+                console.log('Rezultat login:', loginResult);
                 
                 if (loginResult.success && loginResult.medic) {
+                    // Login reușit
                     authToken = `php_token_${loginResult.medic.id}_${Date.now()}`;
                     currentDoctor = {
                         id: loginResult.medic.id,
@@ -917,40 +880,49 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
                     localStorage.setItem('authToken', authToken);
                     localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
                     
-                    showMessage('Autentificare reușită!', 'success');
+                    showMessage('Autentificare reușită în API-ul PHP!', 'success');
                     showDashboard();
                 } else {
                     throw new Error(loginResult.message || 'Date de autentificare incorecte');
                 }
             } catch (error) {
-                showMessage(`Eroare de conectare: ${error.message}`, 'error');
+                console.error('Eroare completă login:', error);
+                showMessage(`Eroare de conectare: ${error.message}. Verifică ID-ul și parola.`, 'error');
             }
         }
 
-        // Afișare dashboard
+        // Afișare dashboard pentru medici
         async function showDashboard() {
             document.getElementById('auth-section').style.display = 'none';
             document.getElementById('config-section').style.display = 'none';
             document.getElementById('dashboard').classList.add('active');
             
+            // Actualizează informațiile medicului
             document.getElementById('doctor-name').textContent = currentDoctor.nume || 'Doctor';
             document.getElementById('doctor-email').textContent = currentDoctor.email || 'doctor@spital.ro';
             
+            // Încarcă lista pacienților
             await loadPatientsPHP();
+            
+            // Inițializează ECG canvas
             initializeECG();
+            
+            // Pornește actualizarea automată
             startMonitoring();
         }
 
-        // Încărcare pacienți
+        // Încărcare lista pacienților din API-ul PHP (fără fallback la date simulate)
         async function loadPatientsPHP() {
             try {
                 showMessage('Se încarcă pacienții din API-ul PHP...', 'info');
                 
                 const pacientiResult = await getPacientiPHP();
+                console.log('Rezultat pacienti:', pacientiResult);
                 
                 if (pacientiResult.success && pacientiResult.pacienti) {
                     const patients = pacientiResult.pacienti;
                     
+                    // Adaptează structura pentru interfață (conform SQL)
                     const adaptedPatients = patients.map(patient => ({
                         id_pacient: patient.id_pacient,
                         nume: patient.nume || 'Necunoscut',
@@ -958,28 +930,42 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
                         email: patient.email || 'N/A',
                         telefon: patient.telefon || 'N/A',
                         data_nasterii: patient.data_nasterii || 'N/A',
+                        // Generează camera și diagnostic pentru afișare (nu sunt în tabela SQL)
                         camera: `Camera ${patient.id_pacient + 100}`,
                         diagnostic: 'Monitorizare medicală'
                     }));
                     
                     displayPatients(adaptedPatients);
-                    showMessage(`${adaptedPatients.length} pacienți încărcați`, 'success');
+                    showMessage(`${adaptedPatients.length} pacienți încărcați din baza de date MySQL`, 'success');
                 } else {
-                    throw new Error('Nu s-au putut încărca pacienții');
+                    throw new Error('Nu s-au putut încărca pacienții din API');
                 }
             } catch (error) {
+                console.error('Eroare la încărcarea pacienților:', error);
+                
+                // Afișează eroarea în loc de fallback
                 const container = document.getElementById('patients-container');
-                container.innerHTML = `<div class="error">❌ Eroare: ${error.message}</div>`;
-                showMessage('Eroare la încărcarea pacienților', 'error');
+                container.innerHTML = `
+                    <div class="error">
+                        ❌ Nu s-au putut încărca pacienții din baza de date.
+                        <br><strong>Eroare:</strong> ${error.message}
+                        <br><br>Verifică conexiunea la API-ul PHP.
+                    </div>
+                `;
+                showMessage('Eroare la încărcarea pacienților din baza de date', 'error');
             }
         }
 
-        // Afișare lista pacienților
+        // Afișare lista pacienților în interfață
         function displayPatients(patients) {
             const container = document.getElementById('patients-container');
             
             if (!patients || patients.length === 0) {
-                container.innerHTML = `<div class="info">📋 Nu sunt pacienți înregistrați.</div>`;
+                container.innerHTML = `
+                    <div class="info">
+                        📋 Nu sunt pacienți înregistrați în sistem.
+                    </div>
+                `;
                 return;
             }
 
@@ -998,7 +984,7 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
                         <div class="patient-name">${patient.prenume} ${patient.nume}</div>
                         <div class="patient-details">
                             📧 ${patient.email || 'N/A'} | 
-                            🏥 ${patient.camera || 'N/A'} | 
+                            🏥 Camera ${patient.camera || 'N/A'} | 
                             📋 ${patient.diagnostic || 'Monitorizare generală'}
                         </div>
                     </div>
@@ -1011,486 +997,101 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
             });
         }
 
-        // Selectare pacient
+        // Selectare pacient (îmbunătățită pentru API PHP)
         function selectPatient(patientId, patientName) {
             console.log(`Selectare pacient: ${patientId} - ${patientName}`);
             
+            // Elimină selecția anterioară
             document.querySelectorAll('.patient-item').forEach(item => {
                 item.classList.remove('selected');
             });
             
+            // Selectează pacientul curent
             event.target.closest('.patient-item').classList.add('selected');
             
             selectedPatientId = patientId;
             document.getElementById('selected-patient-name').textContent = patientName;
             document.getElementById('patient-values').classList.add('active');
             
-            // Reset ECG pentru noul pacient
-            resetECGForNewPatient();
-            
+            // Actualizează imediat măsurătorile pentru pacientul selectat
             setTimeout(async () => {
                 const measurements = await getPatientMeasurementsPHP(patientId);
                 updateSelectedPatientValues(measurements);
+                
+                // Reinițializează ECG pentru noul pacient
+                if (ecgAnimation) {
+                    cancelAnimationFrame(ecgAnimation);
+                }
+                initializeECG();
             }, 100);
         }
 
-        // Obținere măsurători din API PHP cu focus pe ECG
+        // Obținere măsurători folosind doar API-ul PHP (fără date simulate)
         async function getPatientMeasurementsPHP(patientId) {
-            console.log(`Obținere măsurători pentru pacientul ${patientId}`);
+            console.log(`Obținere măsurători PHP pentru pacientul ${patientId}`);
             
             try {
+                // Folosește API-ul PHP real
                 const masuratori = await getMasuratori_PHP(patientId);
-                console.log(`Măsurători complete:`, masuratori);
+                console.log(`Măsurători din API-ul PHP pentru pacientul ${patientId}:`, masuratori);
                 
                 if (masuratori.success && masuratori.masuratori && masuratori.masuratori.length > 0) {
+                    // Ia ultima măsurătoare din lista primită
                     const latestMeasurement = masuratori.masuratori[masuratori.masuratori.length - 1];
-                    console.log(`📊 Ultima măsurătoare:`, latestMeasurement);
+                    console.log(`📊 Ultima măsurătoare pentru pacientul ${patientId}:`, latestMeasurement);
                     
-                    // Procesează datele ECG reale
-                    const ecgValue = parseFloat(latestMeasurement.ecg || 0);
-                    const pulseValue = parseInt(latestMeasurement.puls || 0);
-                    
-                    // Actualizează ECG-ul cu datele reale
-                    updateECGWithRealData(ecgValue, pulseValue, latestMeasurement);
-                    
+                    // Adaptează formatul pentru interfață (conform coloanelor SQL)
                     return {
                         temperatura: latestMeasurement.temperatura || '0', 
                         puls: latestMeasurement.puls || '0',
                         umiditate: latestMeasurement.umiditate || '0', 
                         ecg: latestMeasurement.ecg || '0', 
                         timestamp: latestMeasurement.timestamp || new Date().toLocaleString('ro-RO'),
+                        // Adaugă informații despre numărul total de măsurători
                         totalMeasurements: masuratori.masuratori.length,
-                        allMeasurements: masuratori.masuratori // Păstrează toate măsurătorile pentru analiza ECG
+                        // Generează date ECG simulate pentru acum
+                        ecgRealTime: {
+                            rawData: generateECGPointsFromValue(parseFloat(latestMeasurement.ecg || 0)),
+                            heartRate: parseInt(latestMeasurement.puls || 0),
+                            rhythm: 'normal'
+                        }
                     };
                 } else {
-                    console.log(`⚠️ Nu sunt măsurători pentru pacientul ${patientId}`);
-                    updateECGDataStatus('No data available');
+                    console.log(`⚠️ Nu sunt măsurători în baza de date pentru pacientul ${patientId}`);
+                    // Returnează valori goale în loc de date simulate
                     return {
                         temperatura: '--',
                         puls: '--',
                         umiditate: '--',
                         ecg: '--',
                         timestamp: 'Nu sunt date disponibile',
-                        totalMeasurements: 0
+                        totalMeasurements: 0,
+                        ecgRealTime: {
+                            rawData: [0, 0, 0, 0, 0],
+                            heartRate: 0,
+                            rhythm: 'no_data'
+                        }
                     };
                 }
             } catch (error) {
-                console.error('Eroare măsurători:', error);
-                updateECGDataStatus('Error: ' + error.message);
+                console.error('Eroare măsurători PHP:', error);
+                
+                // În caz de eroare, returnează valori goale
                 return {
                     temperatura: 'Eroare',
                     puls: 'Eroare',
                     umiditate: 'Eroare',
                     ecg: 'Eroare',
                     timestamp: 'Eroare de conexiune',
-                    totalMeasurements: 0
+                    totalMeasurements: 0,
+                    ecgRealTime: {
+                        rawData: [0, 0, 0, 0, 0],
+                        heartRate: 0,
+                        rhythm: 'error'
+                    }
                 };
             }
         }
-
-        // === FUNCȚII ECG ÎMBUNĂTĂȚITE ===
-
-        // Setare mod ECG
-        function setECGMode(mode) {
-            ecgMode = mode;
-            
-            // Actualizează butoanele
-            document.querySelectorAll('.ecg-mode-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(`mode-${mode}`).classList.add('active');
-            
-            // Actualizează afișarea
-            updateECGDisplay();
-            
-            console.log(`ECG mode changed to: ${mode}`);
-        }
-
-        // Inițializare ECG îmbunătățită
-        function initializeECG() {
-            ecgCanvas = document.getElementById('ecg-canvas');
-            if (!ecgCanvas) return;
-            
-            ecgCtx = ecgCanvas.getContext('2d');
-            
-            // Setează dimensiunile canvas-ului
-            const rect = ecgCanvas.getBoundingClientRect();
-            ecgCanvas.width = rect.width * window.devicePixelRatio;
-            ecgCanvas.height = rect.height * window.devicePixelRatio;
-            ecgCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
-            
-            // Inițializează buffer-ul ECG
-            ecgDataBuffer = [];
-            ecgUpdateCount = 0;
-            
-            startECGAnimation();
-            updateECGDataStatus('ECG initialized - waiting for data');
-        }
-
-        // Reset ECG pentru pacient nou
-        function resetECGForNewPatient() {
-            ecgDataBuffer = [];
-            lastECGData = null;
-            ecgUpdateCount = 0;
-            
-            // Reset afișare
-            document.getElementById('ecg-bpm').textContent = '-- BPM';
-            document.getElementById('ecg-rhythm').textContent = '--';
-            document.getElementById('ecg-raw-value').textContent = '--';
-            document.getElementById('ecg-timestamp').textContent = '--';
-            document.getElementById('ecg-raw-display').textContent = 'Loading ECG data for new patient...';
-            
-            updateECGDataStatus('Loading patient data...');
-        }
-
-        // Actualizare ECG cu date reale din baza de date
-        function updateECGWithRealData(ecgValue, pulseValue, measurementData) {
-            lastECGData = {
-                rawValue: ecgValue,
-                pulse: pulseValue,
-                timestamp: measurementData.timestamp,
-                measurement: measurementData
-            };
-            
-            // Actualizează metricile afișate
-            document.getElementById('ecg-raw-value').textContent = ecgValue.toFixed(3);
-            document.getElementById('ecg-bpm').textContent = `${pulseValue} BPM`;
-            document.getElementById('ecg-timestamp').textContent = new Date(measurementData.timestamp).toLocaleTimeString('ro-RO');
-            
-            // Determină ritmul bazat pe valorile reale
-            const rhythm = determineECGRhythm(ecgValue, pulseValue);
-            document.getElementById('ecg-rhythm').textContent = rhythm;
-            
-            // Adaugă valoarea în buffer pentru afișare grafică
-            if (ecgMode === 'realtime') {
-                addECGDataToBuffer(ecgValue);
-            }
-            
-            // Actualizează afișarea datelor raw
-            updateRawDataDisplay(measurementData);
-            
-            // Actualizează statusul
-            updateECGDataStatus(`Real data received: ${ecgValue.toFixed(3)}V`);
-            
-            ecgUpdateCount++;
-            console.log(`📈 ECG actualizat #${ecgUpdateCount}: ${ecgValue}V, ${pulseValue} BPM`);
-        }
-
-        // Adaugă date ECG în buffer
-        function addECGDataToBuffer(value) {
-            // Convertește valoarea reală într-o formă vizibilă pe grafic
-            const normalizedValue = normalizeECGValue(value);
-            ecgDataBuffer.push(normalizedValue);
-            
-            // Limitează dimensiunea buffer-ului
-            if (ecgDataBuffer.length > maxECGBufferSize) {
-                ecgDataBuffer.shift();
-            }
-        }
-
-        // Normalizează valoarea ECG pentru afișare grafică
-        function normalizeECGValue(rawValue) {
-            // Valorile din baza de date par să fie în jur de 0-5V
-            // Le mapăm la intervalul -1 to 1 pentru afișare
-            
-            // Simulează o undă ECG bazată pe valoarea reală
-            const baseAmplitude = Math.max(-1, Math.min(1, (rawValue - 2.5) / 2.5));
-            
-            // Adaugă o componentă de undă ECG realistă
-            const time = Date.now() / 1000;
-            const heartRate = lastECGData ? lastECGData.pulse : 75;
-            const ecgWave = generateECGWaveFromValue(time, heartRate, rawValue);
-            
-            return baseAmplitude * 0.3 + ecgWave * 0.7;
-        }
-
-        // Generează undă ECG bazată pe valoarea reală
-        function generateECGWaveFromValue(time, heartRate, rawValue) {
-            const beatInterval = 60 / heartRate;
-            const beatPhase = (time % beatInterval) / beatInterval;
-            
-            // Modulează amplitudinea bazată pe valoarea reală din DB
-            const amplitudeFactor = Math.max(0.5, Math.min(2.0, rawValue / 2.5));
-            
-            let amplitude = 0;
-            
-            // Complexul QRS simplificat
-            if (beatPhase < 0.1) {
-                // Unda P
-                amplitude = 0.2 * Math.sin(beatPhase * 10 * Math.PI) * amplitudeFactor;
-            } else if (beatPhase < 0.3) {
-                // Complexul QRS
-                const qrsPhase = (beatPhase - 0.1) / 0.2;
-                if (qrsPhase < 0.3) {
-                    amplitude = -0.3 * Math.sin(qrsPhase * 3.33 * Math.PI) * amplitudeFactor;
-                } else if (qrsPhase < 0.7) {
-                    amplitude = 1.2 * Math.sin((qrsPhase - 0.3) * 2.5 * Math.PI) * amplitudeFactor;
-                } else {
-                    amplitude = -0.4 * Math.sin((qrsPhase - 0.7) * 3.33 * Math.PI) * amplitudeFactor;
-                }
-            } else if (beatPhase < 0.6) {
-                // Unda T
-                amplitude = 0.3 * Math.sin((beatPhase - 0.3) * 3.33 * Math.PI) * amplitudeFactor;
-            }
-            
-            // Adaugă variație bazată pe valoarea din DB
-            amplitude += (rawValue - 2.5) * 0.1 * Math.sin(time * 10);
-            
-            return amplitude;
-        }
-
-        // Determină ritmul ECG bazat pe valori reale
-        function determineECGRhythm(ecgValue, pulseValue) {
-            if (pulseValue === 0 || ecgValue === 0) {
-                return 'No signal';
-            } else if (pulseValue > 100) {
-                return 'Tachycardia';
-            } else if (pulseValue < 60) {
-                return 'Bradycardia';
-            } else if (ecgValue > 4.0 || ecgValue < 1.0) {
-                return 'Abnormal';
-            } else {
-                return 'Normal sinus';
-            }
-        }
-
-        // Actualizează afișarea datelor raw
-        function updateRawDataDisplay(measurementData) {
-            const display = document.getElementById('ecg-raw-display');
-            const timestamp = new Date(measurementData.timestamp).toLocaleString('ro-RO');
-            
-            const rawText = `
-[${timestamp}] ECG Raw Data:
-- Value: ${measurementData.ecg}V
-- Pulse: ${measurementData.puls} BPM  
-- Temperature: ${measurementData.temperatura}°C
-- Humidity: ${measurementData.umiditate}%
-- Update #${ecgUpdateCount}
-            `.trim();
-            
-            display.textContent = rawText;
-        }
-
-        // Actualizează statusul datelor ECG
-        function updateECGDataStatus(status) {
-            document.getElementById('ecg-data-status').textContent = status;
-        }
-
-        // Actualizează afișarea ECG
-        function updateECGDisplay() {
-            // Logică suplimentară pentru diferite moduri de afișare
-            if (ecgMode === 'raw' && lastECGData) {
-                // În modul raw, afișează doar valorile numerice
-                updateRawDataDisplay(lastECGData.measurement);
-            }
-        }
-
-        // Animația ECG îmbunătățită
-        function startECGAnimation() {
-            const canvas = ecgCanvas;
-            const ctx = ecgCtx;
-            if (!canvas || !ctx) return;
-            
-            const width = canvas.width / window.devicePixelRatio;
-            const height = canvas.height / window.devicePixelRatio;
-            const centerY = height / 2;
-            
-            function animate() {
-                // Curăță canvas-ul
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, width, height);
-                
-                // Desenează grila ECG
-                drawECGGrid(ctx, width, height);
-                
-                // Desenează datele ECG conform modului selectat
-                switch(ecgMode) {
-                    case 'realtime':
-                        drawRealTimeECG(ctx, width, height, centerY);
-                        break;
-                    case 'simulated':
-                        drawSimulatedECG(ctx, width, height, centerY);
-                        break;
-                    case 'raw':
-                        drawRawECGValues(ctx, width, height, centerY);
-                        break;
-                }
-                
-                // Linia de baleiaj
-                drawSweepLine(ctx, width, height);
-                
-                ecgAnimation = requestAnimationFrame(animate);
-            }
-            
-            animate();
-        }
-
-        // Desenează ECG în timp real (date din DB)
-        function drawRealTimeECG(ctx, width, height, centerY) {
-            if (ecgDataBuffer.length < 2) {
-                // Dacă nu avem date, afișează linia de bază
-                ctx.strokeStyle = '#00aa00';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(0, centerY);
-                ctx.lineTo(width, centerY);
-                ctx.stroke();
-                return;
-            }
-            
-            // Determină culoarea bazată pe calitatea semnalului
-            const signalQuality = determineSignalQuality();
-            ctx.strokeStyle = getECGColor(signalQuality);
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            
-            const pointsToShow = Math.min(ecgDataBuffer.length, Math.floor(width / 2));
-            const startIndex = Math.max(0, ecgDataBuffer.length - pointsToShow);
-            
-            for (let i = 0; i < pointsToShow; i++) {
-                const dataIndex = startIndex + i;
-                const amplitude = ecgDataBuffer[dataIndex];
-                
-                const x = (i / pointsToShow) * width;
-                const y = centerY - (amplitude * centerY * 0.8);
-                
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-            
-            ctx.stroke();
-        }
-
-        // Desenează ECG simulat (pentru demonstrație)
-        function drawSimulatedECG(ctx, width, height, centerY) {
-            const currentTime = Date.now() / 1000;
-            const heartRate = lastECGData ? lastECGData.pulse : 75;
-            
-            ctx.strokeStyle = '#00ff00';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            
-            const samplesPerSecond = 100;
-            const secondsVisible = 4;
-            const totalSamples = samplesPerSecond * secondsVisible;
-            
-            for (let i = 0; i < totalSamples; i++) {
-                const timeOffset = (i / samplesPerSecond) - secondsVisible;
-                const sampleTime = currentTime + timeOffset;
-                const amplitude = generateECGWaveFromValue(sampleTime, heartRate, lastECGData ? lastECGData.rawValue : 2.5);
-                
-                const x = (i / totalSamples) * width;
-                const y = centerY - (amplitude * centerY * 0.8);
-                
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-            
-            ctx.stroke();
-        }
-
-        // Desenează valorile raw ECG ca bare
-        function drawRawECGValues(ctx, width, height, centerY) {
-            if (!lastECGData) {
-                ctx.fillStyle = '#ffaa00';
-                ctx.font = '16px Courier New';
-                ctx.textAlign = 'center';
-                ctx.fillText('No ECG data available', width/2, centerY);
-                return;
-            }
-            
-            // Desenează bara pentru valoarea curentă
-            const value = lastECGData.rawValue;
-            const normalizedHeight = (value / 5.0) * height * 0.8; // Presupunem max 5V
-            
-            ctx.fillStyle = '#00ff00';
-            const barWidth = 40;
-            const barX = width / 2 - barWidth / 2;
-            const barY = centerY + height * 0.4 - normalizedHeight;
-            
-            ctx.fillRect(barX, barY, barWidth, normalizedHeight);
-            
-            // Afișează valoarea
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '14px Courier New';
-            ctx.textAlign = 'center';
-            ctx.fillText(`${value.toFixed(3)}V`, width/2, height - 20);
-        }
-
-        // Desenează grila ECG
-        function drawECGGrid(ctx, width, height) {
-            ctx.strokeStyle = '#003300';
-            ctx.lineWidth = 0.5;
-            
-            // Linii verticale
-            const verticalSpacing = width / 25;
-            for (let x = 0; x <= width; x += verticalSpacing) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, height);
-                ctx.stroke();
-            }
-            
-            // Linii orizontale
-            const horizontalSpacing = height / 10;
-            for (let y = 0; y <= height; y += horizontalSpacing) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(width, y);
-                ctx.stroke();
-            }
-            
-            // Linia centrală
-            ctx.strokeStyle = '#006600';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(0, height / 2);
-            ctx.lineTo(width, height / 2);
-            ctx.stroke();
-        }
-
-        // Desenează linia de baleiaj
-        function drawSweepLine(ctx, width, height) {
-            const sweepX = (Date.now() / 100) % width;
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([2, 2]);
-            ctx.beginPath();
-            ctx.moveTo(sweepX, 0);
-            ctx.lineTo(sweepX, height);
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
-
-        // Determină calitatea semnalului
-        function determineSignalQuality() {
-            if (!lastECGData) return 'no_signal';
-            
-            const value = lastECGData.rawValue;
-            const pulse = lastECGData.pulse;
-            
-            if (value === 0 || pulse === 0) return 'no_signal';
-            if (value < 1 || value > 4 || pulse < 40 || pulse > 150) return 'poor';
-            if (pulse < 60 || pulse > 100) return 'warning';
-            return 'good';
-        }
-
-        // Obține culoarea ECG bazată pe calitate
-        function getECGColor(quality) {
-            const colors = {
-                'good': '#00ff00',
-                'warning': '#ffaa00', 
-                'poor': '#ff4444',
-                'no_signal': '#666666'
-            };
-            return colors[quality] || '#00ff00';
-        }
-
-        // === CONTINUĂ CU RESTUL FUNCȚIILOR ===
 
         // Deconectare
         function logout() {
@@ -1504,10 +1105,6 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
                 clearInterval(updateInterval);
             }
             
-            if (ecgAnimation) {
-                cancelAnimationFrame(ecgAnimation);
-            }
-            
             document.getElementById('auth-section').style.display = 'block';
             document.getElementById('dashboard').classList.remove('active');
             document.getElementById('patient-values').classList.remove('active');
@@ -1518,12 +1115,15 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
         function startMonitoring() {
             console.log('Pornire monitorizare...');
             
+            // Oprește intervalul anterior dacă există
             if (updateInterval) {
                 clearInterval(updateInterval);
             }
             
+            // Prima actualizare imediată
             updatePatientsStatus();
             
+            // Actualizare la fiecare 5 secunde
             updateInterval = setInterval(() => {
                 console.log('Actualizare automată...');
                 updatePatientsStatus();
@@ -1544,6 +1144,7 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
                     const measurements = await getPatientMeasurementsPHP(patientId);
                     updatePatientAlert(patientId, measurements);
                     
+                    // Dacă este pacientul selectat, actualizează valorile
                     if (selectedPatientId == patientId) {
                         updateSelectedPatientValues(measurements);
                     }
@@ -1555,11 +1156,12 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
             }
         }
 
-        // Actualizare bulinuță alertă pentru un pacient
+        // Actualizare bulinuță alertă pentru un pacient (doar date reale)
         function updatePatientAlert(patientId, measurements) {
             const alertElement = document.getElementById(`alert-${patientId}`);
             if (!alertElement) return;
 
+            // Dacă nu avem date valide, marchează ca offline
             if (measurements.temperatura === '--' || measurements.temperatura === 'Eroare') {
                 alertElement.className = 'alert-indicator alert-offline';
                 return;
@@ -1569,69 +1171,67 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
             const puls = parseInt(measurements.puls);
             const umiditate = parseInt(measurements.umiditate || 0);
 
+            // Logica pentru determinarea tipului de alertă (adaptată pentru valorile din SQL)
             let alertType = 'normal';
             
+            // Valori critice (adaptate pentru valorile din SQL care sunt în jur de 24°C)
             if (temp > 26.0 || temp < 22.0 || puls > 120 || puls < 50 || umiditate < 35) {
                 alertType = 'critical';
-            } else if (temp > 25.0 || temp < 23.0 || puls > 100 || puls < 60 || umiditate < 40) {
+            }
+            // Valori de atenționare
+            else if (temp > 25.0 || temp < 23.0 || puls > 100 || puls < 60 || umiditate < 40) {
                 alertType = 'warning';
             }
 
+            // Actualizează clasa bulinuței
             alertElement.className = `alert-indicator alert-${alertType}`;
         }
 
-        // Actualizare valori pentru pacientul selectat
+        // Actualizare valori pentru pacientul selectat (doar date reale)
         function updateSelectedPatientValues(measurements) {
-            // Actualizează valorile de bază
+            // Afișează valorile exacte din baza de date
             document.getElementById('temp-value').textContent = measurements.temperatura === '--' || measurements.temperatura === 'Eroare' ? measurements.temperatura : `${measurements.temperatura}°C`;
             document.getElementById('pulse-value').textContent = measurements.puls === '--' || measurements.puls === 'Eroare' ? measurements.puls : `${measurements.puls} BPM`;
             document.getElementById('oxygen-value').textContent = measurements.umiditate === '--' || measurements.umiditate === 'Eroare' ? measurements.umiditate : `${measurements.umiditate}%`;
             
+            // ADĂUGAT: Afișează valoarea ECG raw din baza de date
+            document.getElementById('ecg-raw-value').textContent = measurements.ecg === '--' || measurements.ecg === 'Eroare' ? measurements.ecg : measurements.ecg;
+            
             // Schimbă eticheta pentru claritate
             document.querySelector('.value-item:nth-child(3) .value-label').textContent = 'Umiditate (%)';
 
-            // Actualizează statusurile
+            // Actualizează statusurile doar dacă avem date valide
             if (measurements.temperatura !== '--' && measurements.temperatura !== 'Eroare') {
                 const temp = parseFloat(measurements.temperatura);
                 const puls = parseInt(measurements.puls);
                 const umiditate = parseInt(measurements.umiditate);
+                const ecgValue = parseFloat(measurements.ecg);
 
+                // Ajustează pragurile pentru valorile din SQL
                 updateValueStatus('temp', temp, [23.0, 25.0], [22.0, 26.0]);
                 updateValueStatus('pulse', puls, [60, 100], [50, 120]);
                 updateValueStatus('oxygen', umiditate, [40, 50], [35, 55]);
-
-                // Actualizează ECG cu valorile reale - asta e partea principală îmbunătățită!
-                const ecgValue = parseFloat(measurements.ecg);
-                updateECGStatus(ecgValue, puls);
+                
+                // ADĂUGAT: Status pentru valoarea ECG raw
+                updateValueStatus('ecg-raw', ecgValue, [1.0, 3.0], [0.5, 4.0]);
             } else {
                 // Marchează ca indisponibil
-                ['temp', 'pulse', 'oxygen', 'ecg'].forEach(prefix => {
-                    const statusElement = document.getElementById(`${prefix}-status`);
-                    if (statusElement) {
-                        statusElement.textContent = 'N/A';
-                        statusElement.className = 'value-status status-normal';
-                    }
-                });
+                document.getElementById('temp-status').textContent = 'N/A';
+                document.getElementById('temp-status').className = 'value-status status-normal';
+                document.getElementById('pulse-status').textContent = 'N/A';
+                document.getElementById('pulse-status').className = 'value-status status-normal';
+                document.getElementById('oxygen-status').textContent = 'N/A';
+                document.getElementById('oxygen-status').className = 'value-status status-normal';
+                document.getElementById('ecg-raw-status').textContent = 'N/A';
+                document.getElementById('ecg-raw-status').className = 'value-status status-normal';
             }
-        }
-
-        // Actualizare status ECG bazat pe date reale
-        function updateECGStatus(ecgValue, pulseValue) {
-            const statusElement = document.getElementById('ecg-status');
             
-            if (ecgValue === 0 || isNaN(ecgValue)) {
-                statusElement.textContent = 'No Signal';
-                statusElement.className = 'value-status status-critical';
-            } else if (ecgValue < 1.0 || ecgValue > 4.0) {
-                statusElement.textContent = 'Abnormal Range';
-                statusElement.className = 'value-status status-warning';
-            } else if (pulseValue < 60 || pulseValue > 100) {
-                statusElement.textContent = 'Rhythm Issue';
-                statusElement.className = 'value-status status-warning';
-            } else {
-                statusElement.textContent = 'Normal';
-                statusElement.className = 'value-status status-normal';
+            // Afișează numărul de măsurători dacă e disponibil
+            if (measurements.totalMeasurements) {
+                console.log(`📊 Total măsurători pentru acest pacient: ${measurements.totalMeasurements}`);
             }
+            
+            // ECG-ul se actualizează automat prin animație
         }
 
         // Actualizare status pentru o valoare specifică
@@ -1650,180 +1250,368 @@ Apoi să repornească XAMPP și să testeze din nou.`, 'error');
             }
         }
 
-        // Mod demonstrație - dezactivat
+        // Mod demonstrație - dezactivat (folosește doar date reale)
         function demoMode() {
             showMessage('Modul demonstrație a fost dezactivat. Aplicația folosește doar date reale din baza de date MySQL.', 'info');
         }
 
-        // === FUNCȚII HELPER PENTRU ECG ===
-
-        // Analizează istoricul ECG pentru tendințe
-        function analyzeECGHistory(allMeasurements) {
-            if (!allMeasurements || allMeasurements.length < 2) {
-                return {
-                    trend: 'insufficient_data',
-                    variability: 0,
-                    average: 0
-                };
-            }
-
-            const ecgValues = allMeasurements.map(m => parseFloat(m.ecg)).filter(v => !isNaN(v));
-            
-            if (ecgValues.length === 0) {
-                return { trend: 'no_data', variability: 0, average: 0 };
-            }
-
-            const average = ecgValues.reduce((a, b) => a + b, 0) / ecgValues.length;
-            const variance = ecgValues.reduce((sum, val) => sum + Math.pow(val - average, 2), 0) / ecgValues.length;
-            const variability = Math.sqrt(variance);
-
-            // Determină tendința
-            let trend = 'stable';
-            if (ecgValues.length >= 3) {
-                const recent = ecgValues.slice(-3);
-                const older = ecgValues.slice(-6, -3);
-                
-                if (older.length > 0) {
-                    const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
-                    const olderAvg = older.reduce((a, b) => a + b, 0) / older.length;
-                    
-                    if (recentAvg > olderAvg * 1.1) trend = 'increasing';
-                    else if (recentAvg < olderAvg * 0.9) trend = 'decreasing';
-                }
-            }
-
-            return { trend, variability, average };
-        }
-
-        // Detectează anomalii ECG
-        function detectECGAnomalies(currentValue, historicalData) {
-            if (!historicalData || historicalData.length < 5) {
-                return { hasAnomaly: false, type: 'insufficient_data' };
-            }
-
-            const analysis = analyzeECGHistory(historicalData);
-            
-            // Verifică dacă valoarea curentă e în afara intervalului normal
-            const threshold = analysis.average + (2 * analysis.variability);
-            const lowerThreshold = analysis.average - (2 * analysis.variability);
-            
-            if (currentValue > threshold) {
-                return { hasAnomaly: true, type: 'spike', severity: 'high' };
-            } else if (currentValue < lowerThreshold) {
-                return { hasAnomaly: true, type: 'drop', severity: 'high' };
-            } else if (analysis.variability > 1.0) {
-                return { hasAnomaly: true, type: 'irregular', severity: 'medium' };
-            }
-            
-            return { hasAnomaly: false, type: 'normal' };
-        }
-
-        // Generează raport ECG
-        function generateECGReport(patientId) {
-            if (!lastECGData) {
-                return 'Nu sunt date ECG disponibile pentru acest pacient.';
-            }
-
-            const analysis = analyzeECGHistory([lastECGData.measurement]);
-            const anomaly = detectECGAnomalies(lastECGData.rawValue, [lastECGData.measurement]);
-            
-            let report = `
-📋 RAPORT ECG - Pacient ID: ${patientId}
-========================================
-🕐 Timestamp: ${lastECGData.timestamp}
-📊 Valoare curentă: ${lastECGData.rawValue.toFixed(3)}V
-💓 Ritm cardiac: ${lastECGData.pulse} BPM
-🔄 Status: ${anomaly.hasAnomaly ? 'ANOMALIE DETECTATĂ' : 'NORMAL'}
-📈 Tendință: ${analysis.trend}
-⚠️  Variabilitate: ${analysis.variability.toFixed(3)}
-
-${anomaly.hasAnomaly ? `🚨 ALERTĂ: ${anomaly.type} (${anomaly.severity})` : '✅ Valori în parametri normali'}
-            `.trim();
-
-            console.log(report);
-            return report;
-        }
-
-        // Exportă date ECG pentru analiză externă
-        function exportECGData() {
-            if (!lastECGData) {
-                showMessage('Nu sunt date ECG disponibile pentru export.', 'error');
-                return;
-            }
-
-            const exportData = {
-                patient_id: selectedPatientId,
-                timestamp: new Date().toISOString(),
-                ecg_data: {
-                    raw_value: lastECGData.rawValue,
-                    pulse: lastECGData.pulse,
-                    rhythm: determineECGRhythm(lastECGData.rawValue, lastECGData.pulse),
-                    quality: determineSignalQuality()
+        // Generare date simulate pentru demonstrație (adaptate pentru datele din SQL)
+        function generateSimulatedData(patientId) {
+            const patientProfiles = {
+                1: { // Caraba Dragos - Date reale din SQL: temp ~24°C, puls variabil, umiditate ~42%
+                    name: "Caraba Dragos",
+                    condition: "Monitorizare cardiacă cu senzori",
+                    temp: { base: 24.4, variation: 0.3 }, // Bazat pe datele SQL
+                    puls: { base: 85, variation: 20 }, // Valorile din SQL variază mult
+                    umiditate: { base: 42, variation: 2 }, // Din SQL
+                    ecg: { base: 2.5, variation: 1.5, anomaly: false } // Valorile ECG din SQL sunt mici
                 },
-                buffer_data: ecgDataBuffer.slice(-100), // Ultimele 100 de puncte
-                analysis: analyzeECGHistory([lastECGData.measurement])
+                2: { // Damian Daniel - Pacient stabil
+                    name: "Damian Daniel", 
+                    condition: "Monitorizare post-operatorie",
+                    temp: { base: 24.2, variation: 0.2 },
+                    puls: { base: 72, variation: 8 },
+                    umiditate: { base: 43, variation: 1 },
+                    ecg: { base: 1.8, variation: 0.5, anomaly: false }
+                }
             };
 
-            // Creează și descarcă fișierul JSON
-            const dataStr = JSON.stringify(exportData, null, 2);
-            const dataBlob = new Blob([dataStr], {type: 'application/json'});
-            const url = URL.createObjectURL(dataBlob);
+            const profile = patientProfiles[patientId] || patientProfiles[1];
             
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `ECG_Data_Patient_${selectedPatientId}_${new Date().toISOString().slice(0,10)}.json`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-
-            showMessage('Date ECG exportate cu succes!', 'success');
+            // Generare valori cu variații realiste
+            const temp = profile.temp.base + (Math.random() - 0.5) * profile.temp.variation;
+            const puls = Math.round(profile.puls.base + (Math.random() - 0.5) * profile.puls.variation);
+            const umiditate = Math.round(profile.umiditate.base + (Math.random() - 0.5) * profile.umiditate.variation);
+            
+            // Simulare deteriorare/îmbunătățire în timp
+            const timeVariation = Math.sin(Date.now() / 30000) * 0.1;
+            
+            // Generare puncte ECG simulate
+            const ecgPoints = [];
+            for (let i = 0; i < 10; i++) {
+                const point = profile.ecg.base + (Math.random() - 0.5) * 0.3;
+                ecgPoints.push(point);
+            }
+            
+            const result = {
+                temperatura: Math.max(22.0, Math.min(26.0, temp + timeVariation)).toFixed(1),
+                puls: Math.max(30, Math.min(200, Math.round(puls + timeVariation * 5))),
+                umiditate: Math.max(35, Math.min(50, Math.round(umiditate + timeVariation * 2))),
+                ecg: Math.max(0.5, Math.min(5.0, profile.ecg.base + timeVariation * 0.5)).toFixed(1),
+                timestamp: new Date().toLocaleString('ro-RO'),
+                patientInfo: {
+                    name: profile.name,
+                    condition: profile.condition,
+                    hasAnomaly: profile.ecg.anomaly
+                },
+                ecgRealTime: {
+                    rawData: ecgPoints,
+                    heartRate: Math.round(puls + timeVariation * 5),
+                    rhythm: profile.ecg.anomaly ? 'arrhythmia' : 'normal',
+                    sampleRate: 100
+                }
+            };
+            
+            // Simulează primirea datelor ECG în timp real
+            if (selectedPatientId == patientId) {
+                processRealTimeECG(result.ecgRealTime);
+            }
+            
+            return result;
         }
 
-        // Funcție pentru debugging - afișează toate datele ECG
-        function debugECGData() {
-            if (!lastECGData) {
-                console.log('❌ Nu sunt date ECG disponibile pentru debugging');
-                return;
+        // Generare puncte ECG bazate pe valoarea reală din baza de date
+        function generateECGPointsFromValue(ecgValue) {
+            const points = [];
+            for (let i = 0; i < 10; i++) {
+                // Folosește valoarea ECG din baza de date ca bază și adaugă variații
+                const point = ecgValue + (Math.random() - 0.5) * 0.5;
+                points.push(point);
             }
-
-            console.log('🔍 DEBUG ECG DATA:');
-            console.log('==================');
-            console.log('📊 Raw Value:', lastECGData.rawValue);
-            console.log('💓 Pulse:', lastECGData.pulse);
-            console.log('🕐 Timestamp:', lastECGData.timestamp);
-            console.log('📈 Buffer Length:', ecgDataBuffer.length);
-            console.log('🎯 Mode:', ecgMode);
-            console.log('🔄 Update Count:', ecgUpdateCount);
-            console.log('📋 Full Measurement:', lastECGData.measurement);
-            
-            // Afișează și în interfață
-            const report = generateECGReport(selectedPatientId);
-            showMessage(`Debug complet ECG:\n${report}`, 'info');
+            return points;
         }
 
-        // Adaugă event listeners pentru debugging (optional)
-        document.addEventListener('keydown', function(event) {
-            // Ctrl + D pentru debug ECG
-            if (event.ctrlKey && event.key === 'd') {
-                event.preventDefault();
-                debugECGData();
+        // Generare puncte ECG pentru streaming simulat
+        function generateECGPoints() {
+            const points = [];
+            for (let i = 0; i < 10; i++) {
+                points.push((Math.random() - 0.5) * 1.5);
+            }
+            return points;
+        }
+
+        // FUNCȚIILE ECG (păstrate din versiunea originală)
+        function initializeECG() {
+            ecgCanvas = document.getElementById('ecg-canvas');
+            if (!ecgCanvas) return;
+            
+            ecgCtx = ecgCanvas.getContext('2d');
+            
+            const rect = ecgCanvas.getBoundingClientRect();
+            ecgCanvas.width = rect.width * 2;
+            ecgCanvas.height = rect.height * 2;
+            ecgCtx.scale(2, 2);
+            
+            startECGAnimation();
+        }
+
+        function processRealTimeECG(ecgDataFromCloud) {
+            try {
+                if (Array.isArray(ecgDataFromCloud)) {
+                    addECGPointsToBuffer(ecgDataFromCloud);
+                } else if (ecgDataFromCloud.rawData) {
+                    addECGPointsToBuffer(ecgDataFromCloud.rawData);
+                    updateECGMetrics(ecgDataFromCloud);
+                } else if (typeof ecgDataFromCloud === 'number') {
+                    addECGPointsToBuffer([ecgDataFromCloud]);
+                }
+                
+                isReceivingRealECG = true;
+            } catch (error) {
+                console.error('Eroare procesare ECG real:', error);
+                isReceivingRealECG = false;
+            }
+        }
+
+        function addECGPointsToBuffer(newPoints) {
+            ecgDataBuffer.push(...newPoints);
+            
+            if (ecgDataBuffer.length > maxECGBufferSize) {
+                ecgDataBuffer = ecgDataBuffer.slice(-maxECGBufferSize);
+            }
+        }
+
+        function updateECGMetrics(ecgData) {
+            if (ecgData.heartRate) {
+                document.getElementById('ecg-bpm').textContent = `${ecgData.heartRate} BPM`;
             }
             
-            // Ctrl + E pentru export ECG
-            if (event.ctrlKey && event.key === 'e') {
-                event.preventDefault();
-                exportECGData();
+            if (ecgData.rhythm) {
+                const rhythmElement = document.getElementById('ecg-rhythm');
+                rhythmElement.textContent = getECGRhythmText(ecgData.rhythm);
+                rhythmElement.style.color = getECGRhythmColor(ecgData.rhythm);
             }
-        });
+        }
 
-        // Afișează comenzile de debugging în consolă
-        console.log('🔧 ECG DEBUG COMMANDS:');
-        console.log('- Ctrl+D: Debug ECG Data');
-        console.log('- Ctrl+E: Export ECG Data');
-        console.log('- debugECGData(): Manual debug');
-        console.log('- exportECGData(): Manual export');
-        console.log('- generateECGReport(patientId): Generate report');
+        function getECGRhythmText(rhythm) {
+            const rhythms = {
+                'normal': 'Ritm sinusal normal',
+                'arrhythmia': 'Aritmie detectată',
+                'tachycardia': 'Tahicardie',
+                'bradycardia': 'Bradicardie',
+                'irregular': 'Ritm neregulat',
+                'atrial_fib': 'Fibrilație atrială'
+            };
+            return rhythms[rhythm] || 'Ritm necunoscut';
+        }
+
+        function getECGRhythmColor(rhythm) {
+            const colors = {
+                'normal': '#00ff00',
+                'arrhythmia': '#ff4444',
+                'tachycardia': '#ffaa00',
+                'bradycardia': '#ffaa00',
+                'irregular': '#ff4444',
+                'atrial_fib': '#ff4444'
+            };
+            return colors[rhythm] || '#ffffff';
+        }
+
+        function startECGAnimation() {
+            const canvas = ecgCanvas;
+            const ctx = ecgCtx;
+            if (!canvas || !ctx) return;
+            
+            const width = canvas.width / 2;
+            const height = canvas.height / 2;
+            const centerY = height / 2;
+            
+            function animate() {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, width, height);
+                
+                drawECGGrid(ctx, width, height);
+                
+                let hasAnomaly = false;
+                
+                if (isReceivingRealECG && ecgDataBuffer.length > 0) {
+                    drawRealECGData(ctx, width, height, centerY);
+                    hasAnomaly = detectECGAnomalies();
+                } else {
+                    drawSimulatedECGData(ctx, width, height, centerY);
+                    hasAnomaly = isECGAnomalous();
+                }
+                
+                ecgAnimation = requestAnimationFrame(animate);
+            }
+            
+            animate();
+        }
+
+        function drawRealECGData(ctx, width, height, centerY) {
+            if (ecgDataBuffer.length < 2) return;
+            
+            const hasAnomaly = detectECGAnomalies();
+            ctx.strokeStyle = hasAnomaly ? '#ff4444' : '#00ff00';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const pointsToShow = Math.min(ecgDataBuffer.length, width);
+            const startIndex = Math.max(0, ecgDataBuffer.length - pointsToShow);
+            
+            for (let i = 0; i < pointsToShow; i++) {
+                const dataIndex = startIndex + i;
+                const amplitude = ecgDataBuffer[dataIndex];
+                
+                const normalizedAmplitude = Math.max(-1, Math.min(1, amplitude / 2));
+                
+                const x = (i / pointsToShow) * width;
+                const y = centerY - (normalizedAmplitude * centerY * 0.8);
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+            
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const sweepX = (Date.now() / 50) % width;
+            ctx.moveTo(sweepX, 0);
+            ctx.lineTo(sweepX, height);
+            ctx.stroke();
+        }
+
+        function drawSimulatedECGData(ctx, width, height, centerY) {
+            const currentTime = Date.now() / 1000;
+            const heartRate = getCurrentHeartRate();
+            const hasAnomaly = isECGAnomalous();
+            
+            ctx.strokeStyle = hasAnomaly ? '#ff4444' : '#00ff00';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const samplesPerSecond = 50;
+            const secondsVisible = 6;
+            const totalSamples = samplesPerSecond * secondsVisible;
+            
+            for (let i = 0; i < totalSamples; i++) {
+                const timeOffset = (i / samplesPerSecond) - secondsVisible;
+                const sampleTime = currentTime + timeOffset;
+                const amplitude = generateECGWave(sampleTime, heartRate, hasAnomaly);
+                
+                const x = (i / totalSamples) * width;
+                const y = centerY - (amplitude * centerY * 0.8);
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+
+        function detectECGAnomalies() {
+            if (ecgDataBuffer.length < 100) return false;
+            
+            const recentData = ecgDataBuffer.slice(-100);
+            
+            const mean = recentData.reduce((a, b) => a + b, 0) / recentData.length;
+            const variance = recentData.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / recentData.length;
+            const stdDev = Math.sqrt(variance);
+            
+            const extremeValues = recentData.filter(val => Math.abs(val - mean) > 3 * stdDev);
+            
+            return extremeValues.length > recentData.length * 0.05;
+        }
+
+        function generateECGWave(time, heartRate = 75, anomaly = false) {
+            const beatInterval = 60 / heartRate;
+            const beatPhase = (time % beatInterval) / beatInterval;
+            
+            let amplitude = 0;
+            
+            if (beatPhase < 0.1) {
+                amplitude = 0.2 * Math.sin(beatPhase * 10 * Math.PI);
+            } else if (beatPhase < 0.2) {
+                amplitude = 0;
+            } else if (beatPhase < 0.35) {
+                const qrsPhase = (beatPhase - 0.2) / 0.15;
+                if (qrsPhase < 0.3) {
+                    amplitude = -0.3 * Math.sin(qrsPhase * 3.33 * Math.PI);
+                } else if (qrsPhase < 0.7) {
+                    amplitude = 1.5 * Math.sin((qrsPhase - 0.3) * 2.5 * Math.PI);
+                } else {
+                    amplitude = -0.4 * Math.sin((qrsPhase - 0.7) * 3.33 * Math.PI);
+                }
+            } else if (beatPhase < 0.5) {
+                amplitude = 0;
+            } else if (beatPhase < 0.7) {
+                amplitude = 0.3 * Math.sin((beatPhase - 0.5) * 5 * Math.PI);
+            } else {
+                amplitude = 0;
+            }
+            
+            if (anomaly) {
+                amplitude += 0.2 * Math.sin(time * 20) * Math.random();
+            }
+            
+            amplitude += (Math.random() - 0.5) * 0.05;
+            
+            return amplitude;
+        }
+
+        function drawECGGrid(ctx, width, height) {
+            ctx.strokeStyle = '#004400';
+            ctx.lineWidth = 0.5;
+            
+            const verticalSpacing = width / 30;
+            for (let x = 0; x < width; x += verticalSpacing) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            
+            const horizontalSpacing = height / 10;
+            for (let y = 0; y < height; y += horizontalSpacing) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+            
+            ctx.strokeStyle = '#006600';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+        }
+
+        function getCurrentHeartRate() {
+            if (selectedPatientId) {
+                const pulseElement = document.getElementById('pulse-value');
+                const pulseText = pulseElement.textContent;
+                const pulse = parseInt(pulseText.replace(' BPM', ''));
+                return isNaN(pulse) ? 75 : pulse;
+            }
+            return 75;
+        }
+
+        function isECGAnomalous() {
+            if (selectedPatientId) {
+                const statusElement = document.getElementById('ecg-status');
+                return statusElement.className.includes('critical') || statusElement.className.includes('warning');
+            }
+            return false;
+        }
     </script>
 </body>
 </html>

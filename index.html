@@ -906,7 +906,7 @@ Verifică:
             startMonitoring();
         }
 
-        // Încărcare lista pacienților din API-ul PHP
+        // Încărcare lista pacienților din API-ul PHP (fără fallback la date simulate)
         async function loadPatientsPHP() {
             try {
                 showMessage('Se încarcă pacienții din API-ul PHP...', 'info');
@@ -938,31 +938,16 @@ Verifică:
             } catch (error) {
                 console.error('Eroare la încărcarea pacienților:', error);
                 
-                // Fallback la pacienții din SQL pentru demo
-                const sqlPatients = [
-                    { 
-                        id_pacient: 1, 
-                        nume: 'Caraba', 
-                        prenume: 'Dragos', 
-                        email: 'dragoscaraba@yahoo.com',
-                        telefon: '075503019',
-                        data_nasterii: '2000-12-02',
-                        camera: '101', 
-                        diagnostic: 'Monitorizare cardiacă - senzori activi' 
-                    },
-                    { 
-                        id_pacient: 2, 
-                        nume: 'Damian', 
-                        prenume: 'Daniel', 
-                        email: 'daniel.damian@yahoo.com',
-                        telefon: '0745627899', 
-                        data_nasterii: '1982-12-02',
-                        camera: '102', 
-                        diagnostic: 'Monitorizare post-operatorie' 
-                    }
-                ];
-                displayPatients(sqlPatients);
-                showMessage('Folosind pacienții din baza de date SQL pentru demo', 'info');
+                // Afișează eroarea în loc de fallback
+                const container = document.getElementById('patients-container');
+                container.innerHTML = `
+                    <div class="error">
+                        ❌ Nu s-au putut încărca pacienții din baza de date.
+                        <br><strong>Eroare:</strong> ${error.message}
+                        <br><br>Verifică conexiunea la API-ul PHP.
+                    </div>
+                `;
+                showMessage('Eroare la încărcarea pacienților din baza de date', 'error');
             }
         }
 
@@ -1036,18 +1021,11 @@ Verifică:
             }, 100);
         }
 
-        // Obținere măsurători folosind API-ul PHP
+        // Obținere măsurători folosind doar API-ul PHP (fără date simulate)
         async function getPatientMeasurementsPHP(patientId) {
             console.log(`Obținere măsurători PHP pentru pacientul ${patientId}`);
             
             try {
-                // În mod demo, returnează întotdeauna date simulate
-                if (authToken && authToken.includes('demo_token')) {
-                    const measurements = generateSimulatedData(patientId);
-                    console.log(`Date simulate generate pentru ${patientId}:`, measurements);
-                    return measurements;
-                }
-                
                 // Folosește API-ul PHP real
                 const masuratori = await getMasuratori_PHP(patientId);
                 console.log(`Măsurători din API-ul PHP pentru pacientul ${patientId}:`, masuratori);
@@ -1055,32 +1033,58 @@ Verifică:
                 if (masuratori.success && masuratori.masuratori && masuratori.masuratori.length > 0) {
                     // Ia ultima măsurătoare din lista primită
                     const latestMeasurement = masuratori.masuratori[masuratori.masuratori.length - 1];
+                    console.log(`📊 Ultima măsurătoare pentru pacientul ${patientId}:`, latestMeasurement);
                     
                     // Adaptează formatul pentru interfață (conform coloanelor SQL)
                     return {
-                        temperatura: latestMeasurement.temperatura || '24.4', // Valorile din SQL sunt cam mici (24°C)
-                        puls: latestMeasurement.puls || '75',
-                        umiditate: latestMeasurement.umiditate || '42', // Umiditatea din SQL
-                        ecg: latestMeasurement.ecg || '2', // Valorile ECG din SQL
+                        temperatura: latestMeasurement.temperatura || '0', 
+                        puls: latestMeasurement.puls || '0',
+                        umiditate: latestMeasurement.umiditate || '0', 
+                        ecg: latestMeasurement.ecg || '0', 
                         timestamp: latestMeasurement.timestamp || new Date().toLocaleString('ro-RO'),
+                        // Adaugă informații despre numărul total de măsurători
+                        totalMeasurements: masuratori.masuratori.length,
                         // Generează date ECG simulate pentru acum
                         ecgRealTime: {
-                            rawData: generateECGPoints(),
-                            heartRate: parseInt(latestMeasurement.puls || 75),
+                            rawData: generateECGPointsFromValue(parseFloat(latestMeasurement.ecg || 0)),
+                            heartRate: parseInt(latestMeasurement.puls || 0),
                             rhythm: 'normal'
                         }
                     };
                 } else {
-                    console.log('Nu sunt măsurători în API, folosesc date simulate');
-                    throw new Error('Nu sunt măsurători disponibile');
+                    console.log(`⚠️ Nu sunt măsurători în baza de date pentru pacientul ${patientId}`);
+                    // Returnează valori goale în loc de date simulate
+                    return {
+                        temperatura: '--',
+                        puls: '--',
+                        umiditate: '--',
+                        ecg: '--',
+                        timestamp: 'Nu sunt date disponibile',
+                        totalMeasurements: 0,
+                        ecgRealTime: {
+                            rawData: [0, 0, 0, 0, 0],
+                            heartRate: 0,
+                            rhythm: 'no_data'
+                        }
+                    };
                 }
             } catch (error) {
                 console.error('Eroare măsurători PHP:', error);
                 
-                // Fallback la date simulate
-                const measurements = generateSimulatedData(patientId);
-                console.log(`Fallback la date simulate pentru ${patientId}:`, measurements);
-                return measurements;
+                // În caz de eroare, returnează valori goale
+                return {
+                    temperatura: 'Eroare',
+                    puls: 'Eroare',
+                    umiditate: 'Eroare',
+                    ecg: 'Eroare',
+                    timestamp: 'Eroare de conexiune',
+                    totalMeasurements: 0,
+                    ecgRealTime: {
+                        rawData: [0, 0, 0, 0, 0],
+                        heartRate: 0,
+                        rhythm: 'error'
+                    }
+                };
             }
         }
 
@@ -1147,14 +1151,20 @@ Verifică:
             }
         }
 
-        // Actualizare bulinuță alertă pentru un pacient (adaptată pentru datele SQL)
+        // Actualizare bulinuță alertă pentru un pacient (doar date reale)
         function updatePatientAlert(patientId, measurements) {
             const alertElement = document.getElementById(`alert-${patientId}`);
             if (!alertElement) return;
 
+            // Dacă nu avem date valide, marchează ca offline
+            if (measurements.temperatura === '--' || measurements.temperatura === 'Eroare') {
+                alertElement.className = 'alert-indicator alert-offline';
+                return;
+            }
+
             const temp = parseFloat(measurements.temperatura);
             const puls = parseInt(measurements.puls);
-            const umiditate = parseInt(measurements.umiditate || 42);
+            const umiditate = parseInt(measurements.umiditate || 0);
 
             // Logica pentru determinarea tipului de alertă (adaptată pentru valorile din SQL)
             let alertType = 'normal';
@@ -1172,24 +1182,40 @@ Verifică:
             alertElement.className = `alert-indicator alert-${alertType}`;
         }
 
-        // Actualizare valori pentru pacientul selectat (adaptat pentru datele SQL)
+        // Actualizare valori pentru pacientul selectat (doar date reale)
         function updateSelectedPatientValues(measurements) {
-            document.getElementById('temp-value').textContent = `${measurements.temperatura}°C`;
-            document.getElementById('pulse-value').textContent = `${measurements.puls} BPM`;
-            document.getElementById('oxygen-value').textContent = `${measurements.umiditate}%`; // Folosim umiditatea ca și saturație O2 pentru demo
+            // Afișează valorile exacte din baza de date
+            document.getElementById('temp-value').textContent = measurements.temperatura === '--' || measurements.temperatura === 'Eroare' ? measurements.temperatura : `${measurements.temperatura}°C`;
+            document.getElementById('pulse-value').textContent = measurements.puls === '--' || measurements.puls === 'Eroare' ? measurements.puls : `${measurements.puls} BPM`;
+            document.getElementById('oxygen-value').textContent = measurements.umiditate === '--' || measurements.umiditate === 'Eroare' ? measurements.umiditate : `${measurements.umiditate}%`;
             
             // Schimbă eticheta pentru claritate
             document.querySelector('.value-item:nth-child(3) .value-label').textContent = 'Umiditate (%)';
 
-            // Actualizează statusurile (adaptate pentru valorile din SQL)
-            const temp = parseFloat(measurements.temperatura);
-            const puls = parseInt(measurements.puls);
-            const umiditate = parseInt(measurements.umiditate);
+            // Actualizează statusurile doar dacă avem date valide
+            if (measurements.temperatura !== '--' && measurements.temperatura !== 'Eroare') {
+                const temp = parseFloat(measurements.temperatura);
+                const puls = parseInt(measurements.puls);
+                const umiditate = parseInt(measurements.umiditate);
 
-            // Ajustează pragurile pentru valorile din SQL (temperatura e în jur de 24°C în SQL)
-            updateValueStatus('temp', temp, [23.0, 25.0], [22.0, 26.0]); // Praguri adaptate
-            updateValueStatus('pulse', puls, [60, 100], [50, 120]);
-            updateValueStatus('oxygen', umiditate, [40, 50], [35, 55]); // Praguri pentru umiditate
+                // Ajustează pragurile pentru valorile din SQL
+                updateValueStatus('temp', temp, [23.0, 25.0], [22.0, 26.0]);
+                updateValueStatus('pulse', puls, [60, 100], [50, 120]);
+                updateValueStatus('oxygen', umiditate, [40, 50], [35, 55]);
+            } else {
+                // Marchează ca indisponibil
+                document.getElementById('temp-status').textContent = 'N/A';
+                document.getElementById('temp-status').className = 'value-status status-normal';
+                document.getElementById('pulse-status').textContent = 'N/A';
+                document.getElementById('pulse-status').className = 'value-status status-normal';
+                document.getElementById('oxygen-status').textContent = 'N/A';
+                document.getElementById('oxygen-status').className = 'value-status status-normal';
+            }
+            
+            // Afișează numărul de măsurători dacă e disponibil
+            if (measurements.totalMeasurements) {
+                console.log(`📊 Total măsurători pentru acest pacient: ${measurements.totalMeasurements}`);
+            }
             
             // ECG-ul se actualizează automat prin animație
         }
@@ -1210,28 +1236,9 @@ Verifică:
             }
         }
 
-        // Mod demonstrație - sare peste login
+        // Mod demonstrație - dezactivat (folosește doar date reale)
         function demoMode() {
-            // Simulează un doctor logat
-            currentDoctor = {
-                id: 1,
-                nume: 'Dr. Demo',
-                email: 'demo@spital.ro'
-            };
-            
-            authToken = 'demo_token_123';
-            
-            localStorage.setItem('authToken', authToken);
-            localStorage.setItem('currentDoctor', JSON.stringify(currentDoctor));
-            
-            showMessage('Mod demonstrație activat! Toate datele sunt simulate.', 'success');
-            showDashboard();
-            
-            // Forțează pornirea monitorizării după o secundă
-            setTimeout(() => {
-                console.log('Pornire monitorizare forțată...');
-                startMonitoring();
-            }, 1000);
+            showMessage('Modul demonstrație a fost dezactivat. Aplicația folosește doar date reale din baza de date MySQL.', 'info');
         }
 
         // Generare date simulate pentru demonstrație (adaptate pentru datele din SQL)
@@ -1297,6 +1304,17 @@ Verifică:
             }
             
             return result;
+        }
+
+        // Generare puncte ECG bazate pe valoarea reală din baza de date
+        function generateECGPointsFromValue(ecgValue) {
+            const points = [];
+            for (let i = 0; i < 10; i++) {
+                // Folosește valoarea ECG din baza de date ca bază și adaugă variații
+                const point = ecgValue + (Math.random() - 0.5) * 0.5;
+                points.push(point);
+            }
+            return points;
         }
 
         // Generare puncte ECG pentru streaming simulat

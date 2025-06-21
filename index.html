@@ -11,6 +11,64 @@
             box-sizing: border-box;
         }
 
+        // Funcție de debugging pentru conexiune API
+        async function debugApiConnection() {
+            console.log('🔧 ÎNCEPERE DEBUG CONEXIUNE API');
+            showMessage('🔍 Rulare teste de debugging...', 'info');
+            
+            const apiUrl = document.getElementById('api-url').value.trim();
+            
+            // Test 1: Ping simplu
+            console.log('📡 Test 1: Ping la URL de bază...');
+            try {
+                const pingResponse = await fetch(apiUrl, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(5000)
+                });
+                console.log(`✅ Ping reușit: ${pingResponse.status}`);
+            } catch (error) {
+                console.error(`❌ Ping eșuat:`, error);
+                showMessage(`❌ Ping la ${apiUrl} a eșuat: ${error.message}`, 'error');
+                return;
+            }
+            
+            // Test 2: Verifică fiecare endpoint
+            const endpoints = [
+                'get_pacienti.php',
+                'login_medic.php', 
+                'get_masuratori.php'
+            ];
+            
+            for (let endpoint of endpoints) {
+                console.log(`📡 Test endpoint: ${endpoint}`);
+                try {
+                    const testResponse = await fetch(`${apiUrl}/${endpoint}`, {
+                        method: endpoint === 'get_pacienti.php' ? 'GET' : 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'ngrok-skip-browser-warning': 'true'
+                        },
+                        body: endpoint !== 'get_pacienti.php' ? JSON.stringify({test: true}) : undefined,
+                        signal: AbortSignal.timeout(5000)
+                    });
+                    
+                    const responseText = await testResponse.text();
+                    console.log(`📊 ${endpoint}: ${testResponse.status} - ${responseText.substring(0, 100)}`);
+                    
+                    if (testResponse.status === 404) {
+                        showMessage(`❌ ${endpoint} nu există pe server (404)`, 'error');
+                    } else if (testResponse.ok || testResponse.status === 400) {
+                        showMessage(`✅ ${endpoint} răspunde (${testResponse.status})`, 'success');
+                    }
+                } catch (error) {
+                    console.error(`❌ Eroare ${endpoint}:`, error);
+                    showMessage(`❌ ${endpoint}: ${error.message}`, 'error');
+                }
+            }
+            
+            console.log('🔧 FINALIZARE DEBUG CONEXIUNE API');
+        }
+
         body {
             font-family: 'Arial', sans-serif;
             background: linear-gradient(135deg, #2c5282 0%, #2d3748 100%);
@@ -437,6 +495,12 @@
                    placeholder="URL API actualizat de coleg"
                    value="https://fcc8-2a02-2f09-3c02-b600-f14c-834e-2af7-60da.ngrok-free.app">
             <button class="btn btn-small" onclick="saveApiConfig()">Testează conexiunea</button>
+            
+            <!-- Buton pentru debugging detaliat -->
+            <button class="btn btn-small" onclick="debugApiConnection()" 
+                    style="background: #e53e3e; margin-left: 10px;">
+                🔍 Debug conexiune
+            </button>
         </div>
 
         <!-- Mesaje -->
@@ -653,39 +717,59 @@
             testApiConnection();
         }
 
-        // Test conexiune API PHP
+        // Test conexiune API PHP (îmbunătățit cu debugging)
         async function testApiConnection() {
             const statusElement = document.getElementById('connection-status');
             statusElement.textContent = '🔄 Testare conexiune...';
             statusElement.className = 'connection-status';
             
+            console.log(`🔍 Testare conexiune la: ${API_BASE_URL}`);
+            
             try {
-                // Testează direct endpoint-ul /get_pacienti.php pentru a vedea dacă API-ul răspunde
+                // Test 1: Verifică dacă răspunde la cerere simplă
+                console.log('Test 1: Cerere GET simplă...');
                 const response = await fetch(`${API_BASE_URL}/get_pacienti.php`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
                         'ngrok-skip-browser-warning': 'true'
                     },
-                    signal: AbortSignal.timeout(5000) // timeout 5 secunde
+                    signal: AbortSignal.timeout(10000) // timeout 10 secunde
                 });
                 
-                console.log('Test conexiune status:', response.status);
+                console.log('📊 Status răspuns:', response.status);
+                console.log('📊 Headers răspuns:', [...response.headers.entries()]);
                 
-                // Dacă primim răspuns valid din PHP
                 if (response.ok) {
                     const contentType = response.headers.get('content-type');
-                    if (contentType && contentType.includes('application/json')) {
+                    console.log('📊 Content-Type:', contentType);
+                    
+                    // Încearcă să citească răspunsul
+                    const responseText = await response.text();
+                    console.log('📊 Răspuns complet:', responseText);
+                    
+                    // Verifică dacă e JSON valid
+                    try {
+                        const jsonData = JSON.parse(responseText);
+                        console.log('✅ JSON valid primit:', jsonData);
+                        
                         isApiConnected = true;
                         statusElement.textContent = '✅ API PHP conectat';
                         statusElement.className = 'connection-status status-connected';
                         document.getElementById('config-section').style.display = 'none';
-                        showMessage('API PHP conectat cu succes! Poți să te autentifici.', 'success');
-                    } else {
-                        throw new Error('API PHP returnează HTML în loc de JSON');
+                        showMessage('API PHP conectat cu succes! Endpoint-ul /get_pacienti.php răspunde.', 'success');
+                    } catch (jsonError) {
+                        console.error('❌ Răspunsul nu e JSON valid:', jsonError);
+                        throw new Error(`API răspunde cu HTML în loc de JSON. Răspuns: ${responseText.substring(0, 200)}`);
                     }
+                } else if (response.status === 404) {
+                    console.log('📊 Status 404 - endpoint nu există');
+                    throw new Error(`Endpoint /get_pacienti.php nu există (404). Verifică că fișierul e în htdocs.`);
                 } else {
-                    throw new Error(`API PHP răspunde cu status ${response.status}`);
+                    console.log('📊 Status neașteptat:', response.status);
+                    const errorText = await response.text();
+                    console.log('📊 Mesaj eroare:', errorText);
+                    throw new Error(`API răspunde cu status ${response.status}: ${errorText.substring(0, 100)}`);
                 }
             } catch (error) {
                 isApiConnected = false;
@@ -693,8 +777,27 @@
                 statusElement.className = 'connection-status status-disconnected';
                 document.getElementById('config-section').style.display = 'block';
                 
-                console.error('Eroare conexiune API:', error);
-                showMessage(`Nu se poate conecta la API: ${API_BASE_URL}. Verifică dacă XAMPP și ngrok rulează.`, 'error');
+                console.error('❌ Eroare completă conexiune:', error);
+                
+                // Mesaj de eroare mai detaliat
+                if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    showMessage(`🚫 Nu se poate contacta serverul la ${API_BASE_URL}. 
+                    
+Verifică cu colegul:
+1. XAMPP rulează? (Apache verde în Control Panel)
+2. ngrok rulează? ('ngrok http 80' în terminal)  
+3. URL-ul ngrok s-a schimbat? (ngrok dă URL nou la fiecare pornire)
+4. Poți accesa ${API_BASE_URL} în browser?`, 'error');
+                } else if (error.name === 'AbortError') {
+                    showMessage(`⏱️ Timeout - serverul nu răspunde în 10 secunde. 
+                    
+Verifică:
+1. Conexiunea la internet
+2. ngrok rulează corect
+3. XAMPP procesează cererile`, 'error');
+                } else {
+                    showMessage(`❌ Eroare conexiune: ${error.message}`, 'error');
+                }
             }
         }
 
@@ -781,32 +884,52 @@
                 if (pacientiResult.success && pacientiResult.pacienti) {
                     const patients = pacientiResult.pacienti;
                     
-                    // Adaptează structura pentru interfață
+                    // Adaptează structura pentru interfață (conform SQL)
                     const adaptedPatients = patients.map(patient => ({
-                        id_pacient: patient.id,
+                        id_pacient: patient.id_pacient,
                         nume: patient.nume || 'Necunoscut',
                         prenume: patient.prenume || 'Pacient',
                         email: patient.email || 'N/A',
-                        camera: patient.camera || `Camera ${patient.id + 100}`,
-                        diagnostic: patient.diagnostic || 'Monitorizare generală'
+                        telefon: patient.telefon || 'N/A',
+                        data_nasterii: patient.data_nasterii || 'N/A',
+                        // Generează camera și diagnostic pentru afișare (nu sunt în tabela SQL)
+                        camera: `Camera ${patient.id_pacient + 100}`,
+                        diagnostic: 'Monitorizare medicală'
                     }));
                     
                     displayPatients(adaptedPatients);
-                    showMessage(`${adaptedPatients.length} pacienți încărcați din API-ul PHP`, 'success');
+                    showMessage(`${adaptedPatients.length} pacienți încărcați din baza de date MySQL`, 'success');
                 } else {
                     throw new Error('Nu s-au putut încărca pacienții din API');
                 }
             } catch (error) {
                 console.error('Eroare la încărcarea pacienților:', error);
                 
-                // Fallback la date simulate
-                const mockPatients = [
-                    { id_pacient: 1, nume: 'Popescu', prenume: 'Ion', email: 'ion.popescu@email.com', diagnostic: 'Simulat - Infecție respiratorie', camera: '101' },
-                    { id_pacient: 2, nume: 'Ionescu', prenume: 'Maria', email: 'maria.ionescu@email.com', diagnostic: 'Simulat - Post-operator', camera: '102' },
-                    { id_pacient: 3, nume: 'Dumitrescu', prenume: 'Gheorghe', email: 'gheorghe.dumitrescu@email.com', diagnostic: 'Simulat - Aritmie cardiacă', camera: '103' }
+                // Fallback la pacienții din SQL pentru demo
+                const sqlPatients = [
+                    { 
+                        id_pacient: 1, 
+                        nume: 'Caraba', 
+                        prenume: 'Dragos', 
+                        email: 'dragoscaraba@yahoo.com',
+                        telefon: '075503019',
+                        data_nasterii: '2000-12-02',
+                        camera: '101', 
+                        diagnostic: 'Monitorizare cardiacă - senzori activi' 
+                    },
+                    { 
+                        id_pacient: 2, 
+                        nume: 'Damian', 
+                        prenume: 'Daniel', 
+                        email: 'daniel.damian@yahoo.com',
+                        telefon: '0745627899', 
+                        data_nasterii: '1982-12-02',
+                        camera: '102', 
+                        diagnostic: 'Monitorizare post-operatorie' 
+                    }
                 ];
-                displayPatients(mockPatients);
-                showMessage('Folosind date simulate - verifică API-ul PHP', 'info');
+                displayPatients(sqlPatients);
+                showMessage('Folosind pacienții din baza de date SQL pentru demo', 'info');
             }
         }
 
@@ -900,13 +1023,12 @@
                     // Ia ultima măsurătoare din lista primită
                     const latestMeasurement = masuratori.masuratori[masuratori.masuratori.length - 1];
                     
-                    // Adaptează formatul pentru interfață
+                    // Adaptează formatul pentru interfață (conform coloanelor SQL)
                     return {
-                        temperatura: latestMeasurement.temperatura || '36.5',
+                        temperatura: latestMeasurement.temperatura || '24.4', // Valorile din SQL sunt cam mici (24°C)
                         puls: latestMeasurement.puls || '75',
-                        saturatie_oxigen: latestMeasurement.saturatie_oxigen || '98',
-                        tensiune_sistolica: latestMeasurement.tensiune_sistolica || '120',
-                        tensiune_diastolica: latestMeasurement.tensiune_diastolica || '80',
+                        umiditate: latestMeasurement.umiditate || '42', // Umiditatea din SQL
+                        ecg: latestMeasurement.ecg || '2', // Valorile ECG din SQL
                         timestamp: latestMeasurement.timestamp || new Date().toLocaleString('ro-RO'),
                         // Generează date ECG simulate pentru acum
                         ecgRealTime: {
@@ -992,24 +1114,24 @@
             }
         }
 
-        // Actualizare bulinuță alertă pentru un pacient
+        // Actualizare bulinuță alertă pentru un pacient (adaptată pentru datele SQL)
         function updatePatientAlert(patientId, measurements) {
             const alertElement = document.getElementById(`alert-${patientId}`);
             if (!alertElement) return;
 
             const temp = parseFloat(measurements.temperatura);
             const puls = parseInt(measurements.puls);
-            const saturatie = parseInt(measurements.saturatie_oxigen || 98);
+            const umiditate = parseInt(measurements.umiditate || 42);
 
-            // Logica pentru determinarea tipului de alertă
+            // Logica pentru determinarea tipului de alertă (adaptată pentru valorile din SQL)
             let alertType = 'normal';
             
-            // Valori critice
-            if (temp > 38.5 || temp < 35.5 || puls > 120 || puls < 50 || saturatie < 90) {
+            // Valori critice (adaptate pentru valorile din SQL care sunt în jur de 24°C)
+            if (temp > 26.0 || temp < 22.0 || puls > 120 || puls < 50 || umiditate < 35) {
                 alertType = 'critical';
             }
             // Valori de atenționare
-            else if (temp > 37.5 || temp < 36.0 || puls > 100 || puls < 60 || saturatie < 95) {
+            else if (temp > 25.0 || temp < 23.0 || puls > 100 || puls < 60 || umiditate < 40) {
                 alertType = 'warning';
             }
 
@@ -1017,20 +1139,24 @@
             alertElement.className = `alert-indicator alert-${alertType}`;
         }
 
-        // Actualizare valori pentru pacientul selectat
+        // Actualizare valori pentru pacientul selectat (adaptat pentru datele SQL)
         function updateSelectedPatientValues(measurements) {
             document.getElementById('temp-value').textContent = `${measurements.temperatura}°C`;
             document.getElementById('pulse-value').textContent = `${measurements.puls} BPM`;
-            document.getElementById('oxygen-value').textContent = `${measurements.saturatie_oxigen || 98}%`;
+            document.getElementById('oxygen-value').textContent = `${measurements.umiditate}%`; // Folosim umiditatea ca și saturație O2 pentru demo
+            
+            // Schimbă eticheta pentru claritate
+            document.querySelector('.value-item:nth-child(3) .value-label').textContent = 'Umiditate (%)';
 
-            // Actualizează statusurile
+            // Actualizează statusurile (adaptate pentru valorile din SQL)
             const temp = parseFloat(measurements.temperatura);
             const puls = parseInt(measurements.puls);
-            const saturatie = parseInt(measurements.saturatie_oxigen || 98);
+            const umiditate = parseInt(measurements.umiditate);
 
-            updateValueStatus('temp', temp, [36.0, 37.5], [35.5, 38.5]);
+            // Ajustează pragurile pentru valorile din SQL (temperatura e în jur de 24°C în SQL)
+            updateValueStatus('temp', temp, [23.0, 25.0], [22.0, 26.0]); // Praguri adaptate
             updateValueStatus('pulse', puls, [60, 100], [50, 120]);
-            updateValueStatus('oxygen', saturatie, [95, 100], [90, 100]);
+            updateValueStatus('oxygen', umiditate, [40, 50], [35, 55]); // Praguri pentru umiditate
             
             // ECG-ul se actualizează automat prin animație
         }
@@ -1075,41 +1201,33 @@
             }, 1000);
         }
 
-        // Generare date simulate pentru demonstrație
+        // Generare date simulate pentru demonstrație (adaptate pentru datele din SQL)
         function generateSimulatedData(patientId) {
             const patientProfiles = {
-                1: { // Ion Popescu - Pacient cu febră și tahicardie
-                    name: "Ion Popescu",
-                    condition: "Infecție respiratorie",
-                    temp: { base: 38.2, variation: 0.4 },
-                    puls: { base: 105, variation: 15 },
-                    saturatie: { base: 94, variation: 3 },
-                    ecg: { base: 0.7, variation: 0.2, anomaly: false }
+                1: { // Caraba Dragos - Date reale din SQL: temp ~24°C, puls variabil, umiditate ~42%
+                    name: "Caraba Dragos",
+                    condition: "Monitorizare cardiacă cu senzori",
+                    temp: { base: 24.4, variation: 0.3 }, // Bazat pe datele SQL
+                    puls: { base: 85, variation: 20 }, // Valorile din SQL variază mult
+                    umiditate: { base: 42, variation: 2 }, // Din SQL
+                    ecg: { base: 2.5, variation: 1.5, anomaly: false } // Valorile ECG din SQL sunt mici
                 },
-                2: { // Maria Ionescu - Pacient stabil, post-operator
-                    name: "Maria Ionescu", 
-                    condition: "Recuperare post-operatorie",
-                    temp: { base: 36.4, variation: 0.2 },
+                2: { // Damian Daniel - Pacient stabil
+                    name: "Damian Daniel", 
+                    condition: "Monitorizare post-operatorie",
+                    temp: { base: 24.2, variation: 0.2 },
                     puls: { base: 72, variation: 8 },
-                    saturatie: { base: 98, variation: 1 },
-                    ecg: { base: 0.5, variation: 0.1, anomaly: false }
-                },
-                3: { // Gheorghe Dumitrescu - Pacient cu aritmie cardiacă
-                    name: "Gheorghe Dumitrescu",
-                    condition: "Fibrilație atrială",
-                    temp: { base: 36.8, variation: 0.3 },
-                    puls: { base: 95, variation: 25 }, 
-                    saturatie: { base: 96, variation: 2 },
-                    ecg: { base: 0.9, variation: 0.4, anomaly: true }
+                    umiditate: { base: 43, variation: 1 },
+                    ecg: { base: 1.8, variation: 0.5, anomaly: false }
                 }
             };
 
-            const profile = patientProfiles[patientId] || patientProfiles[2];
+            const profile = patientProfiles[patientId] || patientProfiles[1];
             
             // Generare valori cu variații realiste
             const temp = profile.temp.base + (Math.random() - 0.5) * profile.temp.variation;
             const puls = Math.round(profile.puls.base + (Math.random() - 0.5) * profile.puls.variation);
-            const saturatie = Math.round(profile.saturatie.base + (Math.random() - 0.5) * profile.saturatie.variation);
+            const umiditate = Math.round(profile.umiditate.base + (Math.random() - 0.5) * profile.umiditate.variation);
             
             // Simulare deteriorare/îmbunătățire în timp
             const timeVariation = Math.sin(Date.now() / 30000) * 0.1;
@@ -1122,9 +1240,10 @@
             }
             
             const result = {
-                temperatura: Math.max(35.0, Math.min(42.0, temp + timeVariation)).toFixed(1),
+                temperatura: Math.max(22.0, Math.min(26.0, temp + timeVariation)).toFixed(1),
                 puls: Math.max(30, Math.min(200, Math.round(puls + timeVariation * 5))),
-                saturatie_oxigen: Math.max(80, Math.min(100, Math.round(saturatie + timeVariation * 2))),
+                umiditate: Math.max(35, Math.min(50, Math.round(umiditate + timeVariation * 2))),
+                ecg: Math.max(0.5, Math.min(5.0, profile.ecg.base + timeVariation * 0.5)).toFixed(1),
                 timestamp: new Date().toLocaleString('ro-RO'),
                 patientInfo: {
                     name: profile.name,

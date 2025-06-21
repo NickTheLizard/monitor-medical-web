@@ -787,8 +787,8 @@ Apoi să repornească XAMPP și să testeze din nou.
             }
         });
 
-        // Salvare configurare API
-        function saveApiConfig() {
+        // Salvare configurare API - ASYNC
+        async function saveApiConfig() {
             const apiUrl = document.getElementById('api-url').value.trim();
             if (!apiUrl) {
                 showMessage('Te rog introdu URL-ul API-ului!', 'error');
@@ -800,10 +800,10 @@ Apoi să repornească XAMPP și să testeze din nou.
             localStorage.setItem('api_base_url', API_BASE_URL);
             
             showMessage('Configurare salvată! Se testează conexiunea...', 'info');
-            testApiConnection();
+            await testApiConnection();
         }
 
-        // Test conexiune API PHP (îmbunătățit cu debugging)
+        // Test conexiune API PHP (îmbunătățit cu debugging) - ASYNC
         async function testApiConnection() {
             const statusElement = document.getElementById('connection-status');
             statusElement.textContent = '🔄 Testare conexiune...';
@@ -908,7 +908,7 @@ Verifică:
             }, 5000);
         }
 
-        // Gestionare login adaptat pentru API-ul PHP
+        // Gestionare login adaptat pentru API-ul PHP - ASYNC
         async function handleLogin(event) {
             event.preventDefault();
             
@@ -951,7 +951,7 @@ Verifică:
             }
         }
 
-        // Afișare dashboard pentru medici
+        // Afișare dashboard pentru medici - ASYNC
         async function showDashboard() {
             document.getElementById('auth-section').style.display = 'none';
             document.getElementById('config-section').style.display = 'none';
@@ -1034,10 +1034,12 @@ Verifică:
             patients.forEach(patient => {
                 const patientElement = document.createElement('div');
                 patientElement.className = 'patient-item';
-                patientElement.onclick = () => selectPatient(
-                    patient.id_pacient || patient.id, 
-                    `${patient.prenume} ${patient.nume}`
-                );
+                patientElement.onclick = () => {
+                    selectPatient(
+                        patient.id_pacient || patient.id, 
+                        `${patient.prenume} ${patient.nume}`
+                    );
+                };
                 
                 patientElement.innerHTML = `
                     <div class="patient-info">
@@ -1057,8 +1059,8 @@ Verifică:
             });
         }
 
-        // Selectare pacient (îmbunătățită pentru API PHP + recomandări)
-        function selectPatient(patientId, patientName) {
+        // Selectare pacient (îmbunătățită pentru API PHP + recomandări) - ASYNC
+        async function selectPatient(patientId, patientName) {
             console.log(`Selectare pacient: ${patientId} - ${patientName}`);
             
             // Elimină selecția anterioară
